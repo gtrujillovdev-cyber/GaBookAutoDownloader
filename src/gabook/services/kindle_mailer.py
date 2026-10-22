@@ -43,12 +43,21 @@ def send_to_kindle(filepath: str, book_title: Optional[str] = None, recipient_em
             clean_display_name = f"{parts[0]}.epub"
 
     subject = book_title if book_title else clean_display_name
+    is_kindle_target = target_email.lower().endswith("@kindle.com")
 
     msg = EmailMessage()
     msg["From"] = GMAIL_USER
     msg["To"] = target_email
-    msg["Subject"] = subject
-    msg.set_content(f"Enviando documento personal a Kindle: {subject}")
+
+    if is_kindle_target:
+        msg["Subject"] = subject
+        msg.set_content(f"Enviando documento personal a Kindle: {subject}")
+    else:
+        msg["Subject"] = f"📚 Tu libro: {subject}"
+        msg.set_content(
+            f"¡Hola!\n\nAdjuntamos tu libro '{subject}' en formato EPUB listo para disfrutar.\n\n"
+            "Saludos,\nTu asistente GaBookAutoDownloader 📖"
+        )
 
     with open(filepath, "rb") as f:
         file_data = f.read()

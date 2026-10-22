@@ -1,8 +1,14 @@
 {
   "123456789": {
     "kindle_email": "ejemplo@kindle.com",
+    "personal_email": "tu_correo@gmail.com",
     "lang": "Spanish",
     "name": "Usuario",
+    "kindle_model_key": "basic_8gb",
+    "kindle_model": "Kindle Básico (8 GB)",
+    "storage_total_mb": 6000.0,
+    "storage_used_mb": 1200.0,
+    "books_sent_count": 3,
     "created_at": "2026-10-21T00:00:00.000000"
   }
 }

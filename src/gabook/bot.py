@@ -32,6 +32,7 @@ from gabook.config import (
     TOPICS,
     TOPICS_PAGE_SIZE,
     PRESET_KINDLES,
+    KINDLE_MODELS,
     LANG_MAP,
     DOWNLOADS_DIR,
     SESSION_TTL_SECONDS,
@@ -50,6 +51,11 @@ from gabook.services.gmail_monitor import monitor_kindle_delivery
 from gabook.services.user_manager import (
     get_user_data,
     set_kindle_email,
+    set_personal_email,
+    set_kindle_model,
+    set_kindle_free_space,
+    record_book_sent,
+    get_kindle_storage_info,
     set_user_lang
 )
 
@@ -90,12 +96,109 @@ def is_valid_email(email_str: str) -> bool:
     """Basic email format validator."""
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_str.strip()))
 
-def build_preset_keyboard() -> InlineKeyboardMarkup:
+def parse_size_to_mb(size_str: Optional[str]) -> float:
+    """Parses book size string (e.g. '2.5 MB', '650 kB') to float megabytes."""
+    if not size_str:
+        return 1.5
+    try:
+        cleaned = re.sub(r'[^0-9.,]', '', size_str).replace(',', '.')
+        if not cleaned:
+            return 1.5
+        val = float(cleaned)
+        if 'kb' in size_str.lower():
+            return val / 1024.0
+        if 'gb' in size_str.lower():
+            return val * 1024.0
+        return val
+    except Exception:
+        return 1.5
+
+def parse_storage_text_to_mb(text: str) -> Optional[float]:
+    """Parses user input string into megabytes (e.g., '500 MB', '2.5 GB')."""
+    t = text.strip().lower()
+    m = re.search(r'([0-9]+(?:[\.,][0-9]+)?)', t)
+    if not m:
+        return None
+    val = float(m.group(1).replace(',', '.'))
+    if 'gb' in t:
+        return val * 1024.0
+    return val
+
+def build_preset_keyboard(include_back: bool = False) -> InlineKeyboardMarkup:
     """Generates dynamic keyboard for preset Kindle devices."""
-    return InlineKeyboardMarkup([
+    rows = [
         [InlineKeyboardButton(PRESET_KINDLES["papa"]["label"], callback_data="preset:papa")],
         [InlineKeyboardButton(PRESET_KINDLES["gonzalo"]["label"], callback_data="preset:gonzalo")],
         [InlineKeyboardButton(PRESET_KINDLES["gabriel"]["label"], callback_data="preset:gabriel")]
+    ]
+    if include_back:
+        rows.append([InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")])
+    return InlineKeyboardMarkup(rows)
+
+def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
+    """Generates user profile overview with storage telemetry and action buttons."""
+    user_data = get_user_data(user_id)
+    storage_info = get_kindle_storage_info(user_id)
+
+    kindle_email = user_data.get("kindle_email") or "No configurado"
+    personal_email = user_data.get("personal_email") or "No configurado"
+    lang = user_data.get("lang") or "Español"
+    books_sent = user_data.get("books_sent_count", 0)
+
+    if storage_info["is_low"]:
+        storage_status = "⚠️ *Poco espacio disponible*"
+    else:
+        storage_status = "✅ *Espacio óptimo*"
+
+    text = (
+        "👤 *MI PERFIL Y DISPOSITIVOS*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📖 *Kindle Vinculado:* `{kindle_email}`\n"
+        f"✉️ *Correo Personal:* `{personal_email}`\n"
+        f"🌐 *Idioma Preferido:* `{lang}`\n"
+        f"📚 *Libros enviados:* {books_sent}\n\n"
+        "📦 *Almacenamiento de tu Kindle:*\n"
+        f"📱 *Modelo:* {storage_info['model']}\n"
+        f"📊 *Ocupación:* `{storage_info['progress_bar']}` *{storage_info['percent_used']:.0f}%* ({storage_status})\n"
+        f"💾 *Espacio Libre:* *{storage_info['free_display']}* de {storage_info['total_display']}\n"
+        f"📤 *Remitente autorizado Amazon:* `{GMAIL_SENDER}`\n\n"
+        "Toca un botón para cambiar tu configuración:"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🎯 Cambiar Kindle", callback_data="menu:kindle"),
+            InlineKeyboardButton("✉️ Correo Personal", callback_data="menu:set_personal_email")
+        ],
+        [
+            InlineKeyboardButton("📱 Modelo de Kindle", callback_data="menu:models"),
+            InlineKeyboardButton("🎛️ Calibrar Espacio", callback_data="menu:calibrate_storage")
+        ],
+        [
+            InlineKeyboardButton("🌐 Cambiar Idioma", callback_data="menu:lang"),
+            InlineKeyboardButton("❌ Cerrar", callback_data="cancel_menu")
+        ]
+    ]
+
+    return text, InlineKeyboardMarkup(keyboard)
+
+def build_models_markup() -> InlineKeyboardMarkup:
+    """Generates buttons for selecting Kindle hardware models."""
+    keyboard = []
+    for key, model in KINDLE_MODELS.items():
+        keyboard.append([InlineKeyboardButton(f"📱 {model['label']}", callback_data=f"set_model:{key}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")])
+    return InlineKeyboardMarkup(keyboard)
+
+def build_calibration_markup() -> InlineKeyboardMarkup:
+    """Generates 1-tap options to calibrate remaining Kindle space."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🟢 Mucho espacio (> 4 GB libres)", callback_data="cal_storage:4000")],
+        [InlineKeyboardButton("🟡 Espacio medio (~ 2 GB libres)", callback_data="cal_storage:2000")],
+        [InlineKeyboardButton("🟠 Poco espacio (~ 500 MB libres)", callback_data="cal_storage:500")],
+        [InlineKeyboardButton("🔴 Casi lleno (~ 150 MB libres - alerta)", callback_data="cal_storage:150")],
+        [InlineKeyboardButton("✍️ Escribir espacio exacto...", callback_data="cal_storage:custom")],
+        [InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")]
     ])
 
 def build_topics_markup(page: int = 0) -> Tuple[str, InlineKeyboardMarkup]:
@@ -214,7 +317,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2️⃣ *Previsualiza:*\n"
         "   Elige un libro para ver su ficha completa, portada y detalles.\n\n"
         "3️⃣ *Envía con 1 toque:*\n"
-        "   Toca *'🚀 Enviar a mi Kindle'* y el bot lo descargará, enviará y verificará automáticamente.\n\n"
+        "   Elige si enviarlo a tu *Kindle* o directamente a tu *correo personal* con 1 toque.\n\n"
         "4️⃣ *¡A leer!:*\n"
         "   Enciende el Wi-Fi de tu Kindle y aparecerá en tu biblioteca.\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -279,32 +382,19 @@ async def kindle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    reply_markup = build_preset_keyboard()
-    user_data = get_user_data(user_id)
-    current = user_data.get("kindle_email") or "Ninguno"
-
+    text, reply_markup = build_profile_markup(user_id)
     await update.message.reply_text(
-        f"🎯 *Configuración de Kindle*\n\n"
-        f"Destino actual: `{current}`\n\n"
-        "Toca para elegir tu Kindle directamente:",
+        text,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=reply_markup
     )
 
 async def perfil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows user profile and settings."""
+    """Shows user profile, storage status and settings."""
     user = update.effective_user
     user_id = user.id
-    data = get_user_data(user_id)
-
-    profile_text = (
-        f"👤 *Perfil: {user.first_name}*\n\n"
-        f"📖 *Kindle vinculado:* `{data.get('kindle_email') or 'No configurado'}`\n"
-        f"🌐 *Idioma favorito:* `{data.get('lang') or 'Español'}`\n"
-        f"📤 *Remitente de envío:* `{GMAIL_SENDER}`\n\n"
-        "Toca abajo para cambiar tu Kindle o explorar temas."
-    )
-    await update.message.reply_text(profile_text, parse_mode=ParseMode.MARKDOWN, reply_markup=MAIN_KEYBOARD)
+    text, reply_markup = build_profile_markup(user_id)
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
 
 async def idioma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Configures preferred search language."""
@@ -419,10 +509,79 @@ async def buscar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles natural keywords and free text book searches without slash commands."""
     user = update.effective_user
+    user_id = user.id
     query = update.message.text.strip()
-    logger.info(f"📩 Mensaje recibido de {user.first_name} (ID: {user.id}): '{query}'")
+    logger.info(f"📩 Mensaje recibido de {user.first_name} (ID: {user_id}): '{query}'")
 
     if query.startswith("/"):
+        return
+
+    # Check interactive pending input states
+    if "awaiting_email_for_send" in context.user_data:
+        pending = context.user_data.pop("awaiting_email_for_send")
+        if not is_valid_email(query):
+            context.user_data["awaiting_email_for_send"] = pending
+            await update.message.reply_text(
+                "⚠️ *Correo no válido.* Por favor escribe una dirección correcta (ej: `usuario@gmail.com`):",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        set_personal_email(user_id, query)
+        status_msg = await update.message.reply_text(f"✅ Correo `{query}` guardado. Preparando envío...")
+        await execute_book_send(status_msg, user_id, pending["session_id"], pending["idx"], query, is_kindle=False)
+        return
+
+    if "awaiting_custom_email_send" in context.user_data:
+        pending = context.user_data.pop("awaiting_custom_email_send")
+        if not is_valid_email(query):
+            context.user_data["awaiting_custom_email_send"] = pending
+            await update.message.reply_text(
+                "⚠️ *Correo no válido.* Por favor escribe una dirección correcta (ej: `usuario@gmail.com`):",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        is_kindle = query.lower().endswith("@kindle.com")
+        status_msg = await update.message.reply_text(f"⏳ Preparando envío a `{query}`...")
+        await execute_book_send(status_msg, user_id, pending["session_id"], pending["idx"], query, is_kindle=is_kindle)
+        return
+
+    if context.user_data.pop("awaiting_personal_email_only", False):
+        if not is_valid_email(query):
+            context.user_data["awaiting_personal_email_only"] = True
+            await update.message.reply_text(
+                "⚠️ *Correo no válido.* Por favor escribe una dirección correcta (ej: `usuario@gmail.com`):",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        set_personal_email(user_id, query)
+        text, reply_markup = build_profile_markup(user_id)
+        await update.message.reply_text(
+            f"🎉 *¡Correo personal guardado con éxito:* `{query}`\n\n" + text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        return
+
+    if context.user_data.pop("awaiting_custom_storage_mb", False):
+        mb = parse_storage_text_to_mb(query)
+        if not mb or mb <= 0:
+            context.user_data["awaiting_custom_storage_mb"] = True
+            await update.message.reply_text(
+                "⚠️ No pude reconocer la cantidad. Escribe algo como `500 MB` o `2.5 GB`:",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        set_kindle_free_space(user_id, mb)
+        text, reply_markup = build_profile_markup(user_id)
+        await update.message.reply_text(
+            f"✅ *Espacio libre calibrado:* `{mb:.0f} MB`\n\n" + text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
         return
 
     q_lower = query.lower()
@@ -464,6 +623,138 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Treat any other text as an automatic book search query
     await handle_search(update, context, query)
+
+async def execute_book_send(
+    target_msg,
+    user_id: int,
+    session_id: str,
+    idx: int,
+    target_email: str,
+    is_kindle: bool
+):
+    """Executes the complete book download, size check, dispatch and notification pipeline."""
+    session = SEARCH_SESSIONS.get(session_id)
+    if not session or idx >= len(session["books"]):
+        await target_msg.edit_text("⚠️ La sesión de búsqueda ha caducado. Vuelve a escribir el título.")
+        return
+
+    selected_book = session["books"][idx]
+    book_title = selected_book["title"]
+    book_author = selected_book["author"]
+    title_md = escape_md(book_title)
+    author_md = escape_md(book_author)
+
+    dest_label = "tu Kindle" if is_kindle else "tu correo electrónico"
+    total_steps = 3 if is_kindle else 2
+
+    # Step 1: Download
+    await target_msg.edit_text(
+        f"⏳ *[1/{total_steps}] Descargando EPUB...*\n\n"
+        f"📖 *{title_md}*\n"
+        f"✍️ _{author_md}_\n"
+        f"📦 Tamaño: {escape_md(selected_book['size'])} | Idioma: *{escape_md(selected_book['lang'])}*",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    loop = asyncio.get_running_loop()
+    filepath = await loop.run_in_executor(None, download_epub, selected_book, DOWNLOADS_DIR)
+
+    if not filepath or not os.path.exists(filepath):
+        await target_msg.edit_text(
+            f"❌ *Error en la descarga*: No se pudo descargar el archivo EPUB para _{title_md}_.\n"
+            "Por favor intenta seleccionar otra versión de la lista.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    try:
+        # Pre-flight check: File size limit (< 22 MB)
+        file_size = os.path.getsize(filepath)
+        if file_size > 22 * 1024 * 1024:
+            size_mb = file_size / (1024 * 1024)
+            await target_msg.edit_text(
+                f"⚠️ *El archivo es demasiado grande ({size_mb:.1f} MB)*\n\n"
+                f"Amazon y Gmail no permiten enviar archivos de más de 20 MB por correo.\n\n"
+                "💡 Por favor toca *'Ver otras versiones'* y elige una opción más ligera de la lista.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ Ver otras versiones", callback_data=f"back:{session_id}")],
+                    [InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")]
+                ])
+            )
+            return
+
+        # Step 2: Send
+        await target_msg.edit_text(
+            f"⏳ *[2/{total_steps}] Enviando a {dest_label}...*\n\n"
+            f"📖 *{title_md}*\n"
+            f"📧 Destino: `{target_email}`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+        sent = await loop.run_in_executor(None, send_to_kindle, filepath, book_title, target_email)
+
+        if not sent:
+            await target_msg.edit_text(
+                "❌ *Error en el envío*: No se pudo enviar el correo.\n"
+                "Verifica la configuración del servidor de correo.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        # Record storage consumption & telemetry
+        record_book_sent(user_id, file_size, is_kindle=is_kindle)
+
+        if is_kindle:
+            # Step 3: Monitor Gmail for Amazon confirmation
+            await target_msg.edit_text(
+                f"⏳ *[3/3] Correo enviado. Verificando confirmación de Amazon en Gmail...*\n\n"
+                f"📖 *{title_md}*\n"
+                "_Comprobando si Amazon solicita verificación o aprueba la entrega..._",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            verify_result = await loop.run_in_executor(None, monitor_kindle_delivery, 60, 5)
+            status_icon = "🎉" if verify_result["status"] in ["verified_auto", "delivered_silent"] else "⚠️"
+            status_desc = escape_md(verify_result['message'])
+            next_tip = "💡 *Próximo paso:* Enciende el Wi-Fi de tu Kindle para que se sincronice automáticamente."
+        else:
+            status_icon = "🎉"
+            status_desc = "Libro enviado con éxito a tu bandeja de entrada."
+            next_tip = "💡 *Próximo paso:* Abre tu correo electrónico para descargar o leer tu archivo EPUB."
+
+        storage_info = get_kindle_storage_info(user_id)
+        storage_footer = f"\n📦 *Espacio restante en Kindle:* `{storage_info['progress_bar']}` {storage_info['free_display']} libres" if is_kindle else ""
+
+        final_message = (
+            f"{status_icon} *¡Operación completada!*\n\n"
+            f"📖 *{title_md}*\n"
+            f"✍️ _{author_md}_\n"
+            f"🎯 Destino: `{target_email}`\n"
+            f"🌐 Idioma: {escape_md(selected_book['lang'])}\n"
+            f"📦 Tamaño: {escape_md(selected_book['size'])}{storage_footer}\n\n"
+            f"📬 *Estado:* {status_desc}\n\n"
+            f"{next_tip}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "👇 *¿Quieres pedir otro libro?*\n"
+            "Escribe su nombre o toca un botón de abajo:"
+        )
+
+        final_keyboard = [
+            [InlineKeyboardButton("🔍 Buscar otro libro", callback_data="action:new_search")],
+            [InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")],
+            [InlineKeyboardButton("👤 Ver mi Perfil / Kindle", callback_data="menu:profile")]
+        ]
+
+        await target_msg.edit_text(final_message, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(final_keyboard))
+
+    finally:
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+                logger.info(f"🗑️ Archivo temporal eliminado tras envío: {filepath}")
+            except Exception as e:
+                logger.warning(f"Error al eliminar temporal {filepath}: {e}")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles all inline keyboard interactions."""
@@ -534,17 +825,123 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         return
 
+    # Handle profile and settings menus
+    if data == "menu:profile":
+        text, reply_markup = build_profile_markup(user_id)
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data == "menu:kindle":
+        reply_markup = build_preset_keyboard(include_back=True)
+        await query.edit_message_text(
+            "🎯 *Selecciona el Kindle que deseas usar:*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        return
+
+    if data == "menu:set_personal_email":
+        context.user_data["awaiting_personal_email_only"] = True
+        cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")]])
+        await query.edit_message_text(
+            "✉️ *Configuración de Correo Personal*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "✍️ *Escribe tu dirección de correo habitual* (ej: `tu_correo@gmail.com`):\n\n"
+            "_La utilizaremos para enviarte libros cuando prefieras recibirlos en tu bandeja o tu Kindle esté casi lleno._",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=cancel_kb
+        )
+        return
+
+    if data == "menu:models":
+        await query.edit_message_text(
+            "📱 *Selecciona el modelo de tu Kindle*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Esto nos permite conocer su capacidad y avisarte si te queda poco espacio:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=build_models_markup()
+        )
+        return
+
+    if data.startswith("set_model:"):
+        model_key = data.split(":")[1]
+        set_kindle_model(user_id, model_key)
+        text, reply_markup = build_profile_markup(user_id)
+        await query.edit_message_text(
+            "🎉 *¡Modelo de Kindle actualizado!*\n\n" + text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        return
+
+    if data == "menu:calibrate_storage":
+        await query.edit_message_text(
+            "🎛️ *Calibración de Espacio Libre*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "¿Cuánto espacio libre aproximado tiene tu Kindle actualmente?\n\n"
+            "_(Puedes verlo en tu Kindle en Configuración ➔ Opciones de dispositivo ➔ Información del dispositivo)_",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=build_calibration_markup()
+        )
+        return
+
+    if data.startswith("cal_storage:"):
+        val = data.split(":")[1]
+        if val == "custom":
+            context.user_data["awaiting_custom_storage_mb"] = True
+            cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver", callback_data="menu:calibrate_storage")]])
+            await query.edit_message_text(
+                "✍️ *Escribe la cantidad de espacio libre en tu Kindle* (ejemplo: `500 MB` o `2.5 GB`):",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=cancel_kb
+            )
+            return
+
+        free_mb = float(val)
+        set_kindle_free_space(user_id, free_mb)
+        text, reply_markup = build_profile_markup(user_id)
+        await query.edit_message_text(
+            "🎉 *¡Espacio libre calibrado con éxito!*\n\n" + text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        return
+
+    if data == "menu:lang":
+        keyboard = [
+            [
+                InlineKeyboardButton("🇪🇸 Español", callback_data="setlang:Spanish"),
+                InlineKeyboardButton("🇬🇧 English", callback_data="setlang:English")
+            ],
+            [
+                InlineKeyboardButton("🇫🇷 Français", callback_data="setlang:French"),
+                InlineKeyboardButton("🇩🇪 Deutsch", callback_data="setlang:German")
+            ],
+            [
+                InlineKeyboardButton("🌍 Cualquier idioma", callback_data="setlang:all")
+            ],
+            [
+                InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")
+            ]
+        ]
+        await query.edit_message_text(
+            "🌐 *Selecciona tu idioma preferido para las búsquedas:*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
     # Handle preset Kindle selector
     if data.startswith("preset:"):
         key = data.split(":")[1]
         preset = PRESET_KINDLES.get(key)
         if preset:
             set_kindle_email(user_id, preset["email"], user.first_name)
+            text, reply_markup = build_profile_markup(user_id)
             await query.edit_message_text(
-                f"🎉 *¡Configurado con éxito!*\n\n"
-                f"🎯 Destino: `{preset['email']}`\n\n"
-                "Ahora ya puedes escribir cualquier libro o tocar *'📚 Explorar por Temas'*.",
-                parse_mode=ParseMode.MARKDOWN
+                f"🎉 *¡Kindle configurado con éxito!* `{preset['email']}`\n\n" + text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
             )
         return
 
@@ -622,7 +1019,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # STEP A: SHOW BOOK PREVIEW WITH COVER
+    # STEP A: SHOW BOOK PREVIEW WITH COVER AND SEND OPTIONS
     if data.startswith("dl:"):
         _, session_id, idx_str = data.split(":")
         idx = int(idx_str)
@@ -635,6 +1032,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         b = session["books"][idx]
         year_str = f"{b['year']}" if b.get('year') else "No especificado"
 
+        user_data = get_user_data(user_id)
+        storage_info = get_kindle_storage_info(user_id)
+        kindle_email = user_data.get("kindle_email") or "No configurado"
+        personal_email = user_data.get("personal_email")
+        book_size_mb = parse_size_to_mb(b.get('size'))
+
+        low_space_alert = ""
+        if storage_info["is_low"] or storage_info["free_mb"] < book_size_mb:
+            low_space_alert = f"\n⚠️ *Aviso de almacenamiento:* Te quedan solo {storage_info['free_display']} en tu Kindle.\n"
+
         preview_text = (
             "📖 *PREVISUALIZACIÓN DEL LIBRO*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -642,16 +1049,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✍️ *Autor:* _{escape_md(b['author'])}_\n"
             f"🌐 *Idioma:* {escape_md(b['lang'])}\n"
             f"📅 *Año:* {escape_md(year_str)}\n"
-            f"📦 *Formato:* EPUB ({escape_md(b['size'])})\n"
-            f"🎯 *Destino:* `{kindle_email}`\n\n"
-            "¿Deseas enviar este libro a tu Kindle?"
+            f"📦 *Formato:* EPUB ({escape_md(b['size'])})\n\n"
+            f"🎯 *Kindle:* `{kindle_email}`\n"
+            f"✉️ *Correo personal:* `{personal_email or 'No configurado'}`\n"
+            f"📊 *Espacio Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*{low_space_alert}\n"
+            "¿A dónde deseas enviar este libro?"
         )
 
         preview_keyboard = [
-            [InlineKeyboardButton("🚀 Enviar a mi Kindle", callback_data=f"send:{session_id}:{idx}")],
-            [InlineKeyboardButton("⬅️ Ver otras versiones", callback_data=f"back:{session_id}")],
-            [InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")]
+            [InlineKeyboardButton("🚀 Enviar a mi Kindle", callback_data=f"send_choice:{session_id}:{idx}:kindle")]
         ]
+
+        if personal_email:
+            preview_keyboard.append([
+                InlineKeyboardButton(f"✉️ Enviar a mi Correo ({personal_email})", callback_data=f"send_choice:{session_id}:{idx}:personal")
+            ])
+        else:
+            preview_keyboard.append([
+                InlineKeyboardButton("✉️ Enviar a mi Correo Personal", callback_data=f"send_choice:{session_id}:{idx}:personal")
+            ])
+
+        preview_keyboard.append([InlineKeyboardButton("✏️ Enviar a otro correo...", callback_data=f"send_choice:{session_id}:{idx}:custom")])
+        preview_keyboard.append([InlineKeyboardButton("⬅️ Ver otras versiones", callback_data=f"back:{session_id}")])
+        preview_keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")])
 
         # Fetch book cover in background
         loop = asyncio.get_running_loop()
@@ -674,121 +1094,125 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # STEP B: CONFIRM AND SEND
-    if not data.startswith("send:"):
-        return
+    # STEP B: PROCESS SEND SELECTIONS
+    if data.startswith("send_choice:"):
+        _, session_id, idx_str, dest = data.split(":")
+        idx = int(idx_str)
 
-    _, session_id, idx_str = data.split(":")
-    idx = int(idx_str)
+        session = SEARCH_SESSIONS.get(session_id)
+        if not session or idx >= len(session["books"]):
+            await query.edit_message_text("⚠️ La sesión de búsqueda ha caducado. Vuelve a escribir el título.")
+            return
 
-    session = SEARCH_SESSIONS.get(session_id)
-    if not session or idx >= len(session["books"]):
-        await query.edit_message_text("⚠️ La sesión de búsqueda ha caducado. Vuelve a escribir el título.")
-        return
+        b = session["books"][idx]
+        user_data = get_user_data(user_id)
+        storage_info = get_kindle_storage_info(user_id)
+        book_size_mb = parse_size_to_mb(b.get('size'))
 
-    selected_book = session["books"][idx]
-    book_title = selected_book["title"]
-    book_author = selected_book["author"]
-    title_md = escape_md(book_title)
-    author_md = escape_md(book_author)
+        if dest == "kindle":
+            kindle_email = user_data.get("kindle_email")
+            if not kindle_email:
+                reply_markup = build_preset_keyboard(include_back=True)
+                await query.edit_message_text(
+                    "⚠️ *Primero necesitamos saber en qué Kindle lo quieres leer:*\n"
+                    "Toca una de las opciones:",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
+                return
 
-    # Step 1: Download
-    await query.edit_message_text(
-        f"⏳ *[1/3] Descargando EPUB...*\n\n"
-        f"📖 *{title_md}*\n"
-        f"✍️ _{author_md}_\n"
-        f"📦 Tamaño: {escape_md(selected_book['size'])} | Idioma: *{escape_md(selected_book['lang'])}*",
-        parse_mode=ParseMode.MARKDOWN
-    )
+            # Check if Kindle is low on storage
+            if storage_info["is_low"] or storage_info["free_mb"] < book_size_mb:
+                warning_text = (
+                    "⚠️ *¡ATENCIÓN: Poco espacio en tu Kindle!*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"Tu dispositivo (*{storage_info['model']}*) tiene aproximadamente *{storage_info['free_display']} libres* "
+                    f"({storage_info['percent_used']:.0f}% ocupado).\n\n"
+                    f"El libro *{escape_md(b['title'])}* ocupa *~{book_size_mb:.1f} MB*.\n\n"
+                    "Para evitar saturar la memoria o que Amazon falle al sincronizar:\n"
+                    "¿Prefieres enviarlo a tu **correo electrónico normal** o continuar al Kindle de todas formas?"
+                )
+                warning_keyboard = [
+                    [InlineKeyboardButton("✉️ Enviar a mi Correo Normal", callback_data=f"send_choice:{session_id}:{idx}:personal")],
+                    [InlineKeyboardButton("🚀 Enviar a Kindle de todas formas", callback_data=f"send_confirmed:{session_id}:{idx}:kindle")],
+                    [InlineKeyboardButton("✏️ Enviar a otro correo...", callback_data=f"send_choice:{session_id}:{idx}:custom")],
+                    [InlineKeyboardButton("⬅️ Volver a la ficha", callback_data=f"dl:{session_id}:{idx}")]
+                ]
+                await query.edit_message_text(
+                    warning_text,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup(warning_keyboard)
+                )
+                return
 
-    loop = asyncio.get_running_loop()
-    filepath = await loop.run_in_executor(None, download_epub, selected_book, DOWNLOADS_DIR)
+            await execute_book_send(query.message, user_id, session_id, idx, target_email=kindle_email, is_kindle=True)
+            return
 
-    if not filepath or not os.path.exists(filepath):
-        await query.edit_message_text(
-            f"❌ *Error en la descarga*: No se pudo descargar el archivo EPUB para _{title_md}_.\n"
-            "Por favor intenta seleccionar otra versión de la lista.",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
+        if dest == "personal":
+            personal_email = user_data.get("personal_email")
+            if personal_email:
+                await execute_book_send(query.message, user_id, session_id, idx, target_email=personal_email, is_kindle=False)
+                return
 
-    try:
-        # Pre-flight check: File size limit (< 22 MB)
-        file_size = os.path.getsize(filepath)
-        if file_size > 22 * 1024 * 1024:
-            size_mb = file_size / (1024 * 1024)
+            # Not configured yet: ask user to input it
+            context.user_data["awaiting_email_for_send"] = {"session_id": session_id, "idx": idx}
+            cancel_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Volver a la ficha", callback_data=f"dl:{session_id}:{idx}")],
+                [InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")]
+            ])
             await query.edit_message_text(
-                f"⚠️ *El archivo es demasiado grande ({size_mb:.1f} MB)*\n\n"
-                f"Amazon y Gmail no permiten enviar archivos de más de 20 MB por correo.\n\n"
-                "💡 Por favor toca *'Ver otras versiones'* y elige una opción más ligera de la lista.",
+                "✉️ *Configuración de Correo Personal*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Aún no tienes guardada una dirección de correo habitual en tu perfil.\n\n"
+                "✍️ *Por favor escribe tu correo electrónico abajo* (ejemplo: `mi_correo@gmail.com`):\n\n"
+                "_Lo guardaremos en tu perfil y te enviaremos este libro de inmediato._",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("⬅️ Ver otras versiones", callback_data=f"back:{session_id}")],
-                    [InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")]
-                ])
+                reply_markup=cancel_kb
             )
             return
 
-        # Step 2: Send to personalized Kindle
-        await query.edit_message_text(
-            f"⏳ *[2/3] Enviando a tu Kindle...*\n\n"
-            f"📖 *{title_md}*\n"
-            f"📧 Destino: `{kindle_email}`",
-            parse_mode=ParseMode.MARKDOWN
-        )
-
-        sent = await loop.run_in_executor(None, send_to_kindle, filepath, book_title, kindle_email)
-
-        if not sent:
+        if dest == "custom":
+            context.user_data["awaiting_custom_email_send"] = {"session_id": session_id, "idx": idx}
+            cancel_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Volver a la ficha", callback_data=f"dl:{session_id}:{idx}")],
+                [InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")]
+            ])
             await query.edit_message_text(
-                "❌ *Error en el envío*: No se pudo enviar el correo a Amazon.\n"
-                "Verifica la configuración del servidor de correo.",
-                parse_mode=ParseMode.MARKDOWN
+                "✏️ *Enviar a otra dirección de correo*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📖 Libro: *{escape_md(b['title'])}*\n\n"
+                "✍️ *Escribe la dirección de correo electrónico* de destino:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=cancel_kb
             )
             return
 
-        # Step 3: Monitor Gmail for Amazon confirmation
-        await query.edit_message_text(
-            f"⏳ *[3/3] Correo enviado. Verificando confirmación de Amazon en Gmail...*\n\n"
-            f"📖 *{title_md}*\n"
-            "_Comprobando si Amazon solicita verificación o aprueba la entrega..._",
-            parse_mode=ParseMode.MARKDOWN
-        )
+    # STEP C: CONFIRMED FORCED SEND OR LEGACY CALLBACKS
+    if data.startswith("send_confirmed:"):
+        _, session_id, idx_str, _ = data.split(":")
+        idx = int(idx_str)
+        user_data = get_user_data(user_id)
+        kindle_email = user_data.get("kindle_email") or DEFAULT_KINDLE_EMAIL
+        await execute_book_send(query.message, user_id, session_id, idx, target_email=kindle_email, is_kindle=True)
+        return
 
-        verify_result = await loop.run_in_executor(None, monitor_kindle_delivery, 60, 5)
-
-        # Step 4: Final notification
-        status_icon = "🎉" if verify_result["status"] in ["verified_auto", "delivered_silent"] else "⚠️"
-        final_message = (
-            f"{status_icon} *¡Operación completada!*\n\n"
-            f"📖 *{title_md}*\n"
-            f"✍️ _{author_md}_\n"
-            f"🎯 Destino: `{kindle_email}`\n"
-            f"🌐 Idioma: {escape_md(selected_book['lang'])}\n\n"
-            f"📬 *Estado:* {escape_md(verify_result['message'])}\n\n"
-            "💡 *Próximo paso:* Enciende el Wi-Fi de tu Kindle para que se sincronice automáticamente.\n\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "👇 *¿Quieres pedir otro libro?*\n"
-            "Escribe su nombre o toca un botón de abajo:"
-        )
-
-        final_keyboard = [
-            [InlineKeyboardButton("🔍 Buscar otro libro", callback_data="action:new_search")],
-            [InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")],
-            [InlineKeyboardButton("🔄 Cambiar de Kindle", callback_data="action:change_kindle")]
-        ]
-        reply_markup = InlineKeyboardMarkup(final_keyboard)
-
-        await query.edit_message_text(final_message, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
-
-    finally:
-        # Guarantee 100% deletion of the downloaded EPUB to avoid accumulating digital waste
-        if filepath and os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-                logger.info(f"🗑️ Archivo temporal eliminado tras envío: {filepath}")
-            except Exception as e:
-                logger.warning(f"No se pudo eliminar archivo temporal {filepath}: {e}")
+    # Legacy callback compatibility
+    if data.startswith("send:"):
+        _, session_id, idx_str = data.split(":")
+        idx = int(idx_str)
+        user_data = get_user_data(user_id)
+        kindle_email = user_data.get("kindle_email")
+        if not kindle_email:
+            reply_markup = build_preset_keyboard(include_back=True)
+            await query.edit_message_text(
+                "⚠️ *Primero necesitamos saber en qué Kindle lo quieres leer:*\n"
+                "Toca una de las opciones:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+            return
+        await execute_book_send(query.message, user_id, session_id, idx, target_email=kindle_email, is_kindle=True)
+        return
 
 def cleanup_downloads_dir():
     """Removes any stale downloaded files on startup to prevent accumulating digital waste."""

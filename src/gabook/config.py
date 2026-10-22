@@ -45,6 +45,21 @@ PRESET_KINDLES = {
     "gabriel": {"label": os.getenv("KINDLE_LABEL_GABRIEL", "👤 Mi Kindle"), "email": KINDLE_GABRIEL}
 }
 
+# Kindle Hardware Profiles & Usable Storage Capacities (in MB)
+KINDLE_MODELS = {
+    "basic_8gb": {"label": "Kindle Básico (8 GB)", "total_mb": 6000.0},
+    "pw_8gb": {"label": "Paperwhite / Oasis (8 GB)", "total_mb": 6000.0},
+    "pw_16gb": {"label": "Paperwhite (16 GB)", "total_mb": 13500.0},
+    "sig_32gb": {"label": "Signature / Oasis (32 GB)", "total_mb": 27500.0},
+    "scribe_16gb": {"label": "Kindle Scribe (16 GB)", "total_mb": 13500.0},
+    "scribe_32gb": {"label": "Kindle Scribe (32 GB)", "total_mb": 27500.0},
+    "scribe_64gb": {"label": "Kindle Scribe (64 GB)", "total_mb": 55000.0},
+    "legacy_4gb": {"label": "Kindle Antiguo (4 GB)", "total_mb": 3000.0},
+}
+DEFAULT_KINDLE_MODEL_KEY = "basic_8gb"
+DEFAULT_STORAGE_TOTAL_MB = 6000.0
+LOW_STORAGE_THRESHOLD_MB = 300.0  # Alert when less than 300 MB remaining
+
 # Thematic categories for browsing (24 curated genres across 3 pages)
 TOPICS = [
     # Página 1: Historia, Arqueología, Humanidades y Clásicos

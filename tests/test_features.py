@@ -151,5 +151,77 @@ class TestBotFeatures(unittest.TestCase):
         self.assertEqual(payload.get("status"), "healthy")
         self.assertEqual(payload.get("service"), "GaBookAutoDownloader")
 
+    def test_parse_size_helpers(self):
+        """Verify size parsing helper functions."""
+        from gabook.bot import parse_size_to_mb, parse_storage_text_to_mb
+        self.assertAlmostEqual(parse_size_to_mb("2.5 MB"), 2.5)
+        self.assertAlmostEqual(parse_size_to_mb("1024 kB"), 1.0)
+        self.assertAlmostEqual(parse_size_to_mb("1 GB"), 1024.0)
+        self.assertAlmostEqual(parse_size_to_mb(None), 1.5)
+
+        self.assertEqual(parse_storage_text_to_mb("500 MB"), 500.0)
+        self.assertEqual(parse_storage_text_to_mb("2.5 GB"), 2560.0)
+        self.assertEqual(parse_storage_text_to_mb("150"), 150.0)
+        self.assertIsNone(parse_storage_text_to_mb("nada"))
+
+    def test_user_manager_personal_email_and_storage(self):
+        """Verify personal email and storage telemetry in user_manager."""
+        test_uid = 999888777
+        user_manager.set_kindle_email(test_uid, "kindle_test@kindle.com", "Test User")
+        user_manager.set_personal_email(test_uid, "personal_test@gmail.com")
+
+        data = user_manager.get_user_data(test_uid)
+        self.assertEqual(data["personal_email"], "personal_test@gmail.com")
+        self.assertEqual(data["kindle_email"], "kindle_test@kindle.com")
+
+        # Test model change
+        user_manager.set_kindle_model(test_uid, "pw_16gb")
+        info = user_manager.get_kindle_storage_info(test_uid)
+        self.assertEqual(info["total_mb"], 13500.0)
+        self.assertFalse(info["is_low"])
+
+        # Test calibrate space to 150 MB (should trigger is_low)
+        user_manager.set_kindle_free_space(test_uid, 150.0)
+        info_low = user_manager.get_kindle_storage_info(test_uid)
+        self.assertAlmostEqual(info_low["free_mb"], 150.0)
+        self.assertTrue(info_low["is_low"], "Should be marked as low storage (<300 MB)")
+        self.assertIn("■", info_low["progress_bar"])
+
+        # Test book recording
+        user_manager.record_book_sent(test_uid, size_bytes=5 * 1024 * 1024, is_kindle=True)
+        info_after = user_manager.get_kindle_storage_info(test_uid)
+        self.assertAlmostEqual(info_after["free_mb"], 145.0)
+
+        # Cleanup
+        users = user_manager.load_users()
+        users.pop(str(test_uid), None)
+        user_manager.save_users(users)
+
+    @patch("smtplib.SMTP_SSL")
+    def test_kindle_mailer_regular_email(self, mock_smtp):
+        """Verify kindle_mailer formats message differently for regular vs kindle emails."""
+        from gabook.services import kindle_mailer
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("wb", suffix=".epub", delete=False) as tf:
+            tf.write(b"dummy epub data")
+            tf_path = tf.name
+
+        try:
+            with patch.object(kindle_mailer, "GMAIL_USER", "test@gmail.com"), \
+                 patch.object(kindle_mailer, "GMAIL_APP_PASSWORD", "secret123"):
+                
+                # Test regular email
+                success = kindle_mailer.send_to_kindle(tf_path, book_title="Don Quijote", recipient_email="amigo@gmail.com")
+                self.assertTrue(success)
+                server_instance = mock_smtp.return_value.__enter__.return_value
+                self.assertTrue(server_instance.send_message.called)
+                sent_msg = server_instance.send_message.call_args[0][0]
+                self.assertEqual(sent_msg["To"], "amigo@gmail.com")
+                self.assertIn("Don Quijote", sent_msg["Subject"])
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
 if __name__ == "__main__":
     unittest.main()

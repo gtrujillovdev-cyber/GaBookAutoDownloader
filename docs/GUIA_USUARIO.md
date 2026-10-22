@@ -59,18 +59,31 @@ Si no tienes un título pensado y te apetece descubrir libros de un género:
 
 ---
 
-## 🖼️ Paso 3: Previsualización y Envío a tu Kindle
+## 🖼️ Paso 3: Previsualización y Envío (Kindle o Correo Personal)
 
 1. En la lista de resultados, toca el libro que más te llame la atención.
 2. Se abrirá la **Ficha del Libro con su Portada oficial**:
-   * Podrás ver la foto de la portada, el título completo, autor, año, idioma y tamaño del archivo.
-3. Si es el que quieres, pulsa el botón:  
-   👉 **`[ 🚀 Enviar a mi Kindle ]`**
-4. Verás cómo el bot te informa en directo:
-   * 📥 *Descargando el libro...*
-   * ✉️ *Enviando a tu Kindle...*
-   * 📬 *Verificando con Amazon...*
-   * 🎉 *¡Listo!*
+   * Podrás ver la foto de la portada, el título completo, autor, año, idioma, tamaño del archivo y el **estado de almacenamiento de tu Kindle** (`[■■■□□□□□□□] 30%`).
+3. Elige cómo prefieres recibirlo:
+   * 👉 **`[ 🚀 Enviar a mi Kindle ]`**: Se enviará y sincronizará en tu lector automáticamente.
+   * 👉 **`[ ✉️ Enviar a mi Correo Personal ]`**: Se enviará de inmediato en formato EPUB a tu bandeja de correo habitual (ideal para leer en móvil, tablet o PC).
+   * 👉 **`[ ✏️ Enviar a otro correo... ]`**: Te permite escribir cualquier correo al vuelo (ej. para regalárselo a un amigo o familiar).
+
+### ⚠️ Alerta de Almacenamiento en Kindle
+Si a tu Kindle le queda poco espacio libre (menos de 300 MB o menos que el tamaño del libro), el bot te avisará automáticamente:
+> *"⚠️ ¡Atención! Tu Kindle tiene poco espacio restante. ¿Deseas enviarlo a tu correo normal en su lugar?"*
+
+Podrás enviarlo al correo normal con 1 toque o forzar el envío al Kindle si lo prefieres.
+
+---
+
+## 📱 Paso 4: Ajustar tu Modelo de Kindle y Espacio Libre
+
+Desde el botón inferior **`🎯 Mi Kindle`** podrás:
+* **Ver tu espacio restante:** Barra de uso visual y megabytes disponibles.
+* **Seleccionar tu modelo:** Elegir entre Kindle Básico (8 GB), Paperwhite (16 GB), Signature (32 GB), Scribe o modelos anteriores.
+* **Calibrar espacio:** Indicar con 1 toque cuánto espacio libre tiene tu Kindle físico.
+* **Configurar tu correo personal:** Para recibir libros directamente por email.
 
 ---
 
