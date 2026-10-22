@@ -4,25 +4,24 @@ import tempfile
 import logging
 from typing import Dict, Optional
 from datetime import datetime
+from gabook.config import USERS_FILE
 
 logger = logging.getLogger(__name__)
 
-USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
-
 def load_users() -> Dict[str, dict]:
-    """Loads all registered users from users.json."""
+    """Loads all registered users from USERS_FILE."""
     if not os.path.exists(USERS_FILE):
         return {}
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        logger.error(f"Error loading users.json: {e}")
+        logger.error(f"Error loading {USERS_FILE}: {e}")
         return {}
 
 def save_users(users: Dict[str, dict]):
-    """Saves users dictionary to users.json atomically to prevent file corruption."""
-    dir_name = os.path.dirname(USERS_FILE)
+    """Saves users dictionary to USERS_FILE atomically to prevent file corruption."""
+    dir_name = os.path.dirname(USERS_FILE) or "."
     temp_name = None
     try:
         with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
@@ -30,7 +29,7 @@ def save_users(users: Dict[str, dict]):
             temp_name = tf.name
         os.replace(temp_name, USERS_FILE)
     except Exception as e:
-        logger.error(f"Error saving users.json: {e}")
+        logger.error(f"Error saving {USERS_FILE}: {e}")
         if temp_name and os.path.exists(temp_name):
             try:
                 os.remove(temp_name)

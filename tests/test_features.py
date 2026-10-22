@@ -1,17 +1,31 @@
 import os
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
-from bot import (
+
+# Add src to sys.path so tests can run cleanly from any directory
+SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+sys.path.insert(0, str(SRC_DIR))
+
+from gabook.config import (
     TOPICS,
     TOPICS_PAGE_SIZE,
+    DOWNLOADS_DIR
+)
+from gabook.bot import (
     build_topics_markup,
     cleanup_downloads_dir,
     escape_md,
     cleanup_expired_sessions,
     SEARCH_SESSIONS
 )
-from book_client import search_epubs, parse_query_and_language, clean_filename
-import user_manager
+from gabook.services.book_client import (
+    search_epubs,
+    parse_query_and_language,
+    clean_filename
+)
+from gabook.services import user_manager
 
 class TestBotFeatures(unittest.TestCase):
     def test_topics_structure(self):
@@ -38,8 +52,8 @@ class TestBotFeatures(unittest.TestCase):
 
     def test_cleanup_downloads(self):
         """Verify that stale digital waste in downloads/ is deleted."""
-        os.makedirs("downloads", exist_ok=True)
-        test_file = os.path.join("downloads", "test_garbage_delete_me.epub")
+        os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+        test_file = os.path.join(DOWNLOADS_DIR, "test_garbage_delete_me.epub")
         with open(test_file, "w") as f:
             f.write("fake epub data")
         self.assertTrue(os.path.exists(test_file))
@@ -90,15 +104,14 @@ class TestBotFeatures(unittest.TestCase):
         """Verify user_manager load and atomic save."""
         users = user_manager.load_users()
         self.assertIsInstance(users, dict)
-        # Verify writing preserves data intact
         user_manager.save_users(users)
         users_after = user_manager.load_users()
         self.assertEqual(users, users_after)
 
-    @patch("book_client.search_libgen")
-    @patch("book_client.search_archive_org")
-    @patch("book_client.search_openlibrary")
-    @patch("book_client.search_gutenberg")
+    @patch("gabook.services.book_client.search_libgen")
+    @patch("gabook.services.book_client.search_archive_org")
+    @patch("gabook.services.book_client.search_openlibrary")
+    @patch("gabook.services.book_client.search_gutenberg")
     def test_search_epubs_integration(self, mock_gut, mock_ol, mock_ia, mock_lg):
         """Verify search_epubs merges results and handles deduplication."""
         mock_lg.return_value = [{"title": "Historia de Roma", "author": "Mommsen", "lang": "Spanish", "size": "1 MB"}]
@@ -107,7 +120,6 @@ class TestBotFeatures(unittest.TestCase):
         mock_gut.return_value = []
 
         matching, others = search_epubs("Roma", max_results=5, target_lang="Spanish")
-        # Should deduplicate to 1 book
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["title"], "Historia de Roma")
 

@@ -55,24 +55,36 @@ flowchart TD
 
 ---
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del Proyecto (Industry Standard `src/` Layout)
 
 ```text
 GaBookAutoDownloader/
-├── bot.py                  # Orquestador del Bot de Telegram, UX y gestión de sesiones
-├── book_client.py          # Motor de búsqueda multi-fuente paralelo y descargador de EPUBs
-├── kindle_mailer.py        # Módulo de envío por correo vía Gmail SMTP SSL con control de tamaño
-├── gmail_monitor.py        # Monitor IMAP persistente y auto-aprobador de enlaces de Amazon
-├── user_manager.py         # Persistencia atómica de perfiles de Kindle e idioma
-├── users.example.json      # Plantilla de ejemplo para la base de datos de usuarios
-├── test_features.py        # Suite de pruebas unitarias automatizadas (9 tests)
-├── setup_macos_service.sh  # Instalador del bot como servicio nativo de macOS (launchd)
-├── Dockerfile              # Empaquetado para despliegue en la nube 24/7 (Render / Railway)
-├── .dockerignore           # Exclusiones de seguridad para el contenedor Docker
-├── requirements.txt        # Dependencias de Python
-├── GUIA_USUARIO.md         # Guía de uso rápido para la familia
-├── README.md               # Esta documentación técnica
-└── .env                    # Variables de entorno y credenciales (ignorado en git)
+├── src/
+│   └── gabook/                     # Paquete principal modular
+│       ├── __init__.py
+│       ├── bot.py                  # Orquestador del Bot de Telegram, UX y teclados
+│       ├── config.py               # Configuración centralizada, rutas y constantes
+│       └── services/               # Servicios desacoplados de negocio
+│           ├── __init__.py
+│           ├── book_client.py      # Motor de búsqueda multi-fuente y descarga EPUB
+│           ├── gmail_monitor.py    # Monitor IMAP persistente y auto-aprobación
+│           ├── kindle_mailer.py    # Despachador SMTP con control de tamaño (< 22MB)
+│           └── user_manager.py     # Persistencia atómica de perfiles (os.replace)
+├── tests/                          # Suite de pruebas unitarias automatizadas
+│   ├── __init__.py
+│   └── test_features.py            # 9 tests unitarios (cobertura total del flujo)
+├── scripts/                        # Scripts de automatización y administración
+│   └── setup_macos_service.sh      # Instalador del bot como daemon nativo launchd
+├── docs/                           # Documentación de usuario y manuales
+│   └── GUIA_USUARIO.md             # Guía visual paso a paso sin comandos para la familia
+├── main.py                         # Punto de entrada principal recomendado
+├── bot.py                          # Proxy de compatibilidad hacia atrás
+├── Dockerfile                      # Empaquetado para despliegue en la nube 24/7
+├── .dockerignore                   # Reglas de seguridad y exclusión para Docker
+├── .env.example                    # Plantilla de variables de entorno
+├── requirements.txt                # Dependencias de Python fijadas
+├── users.example.json              # Plantilla sanitizada para la base de datos
+└── README.md                       # Esta documentación técnica
 ```
 
 ---
@@ -93,7 +105,13 @@ Tras la auditoría técnica, el pipeline incorpora las siguientes salvaguardas p
 
 ## ⚙️ Configuración (`.env`)
 
-Crea un archivo `.env` en la raíz del proyecto con la siguiente estructura:
+Crea un archivo `.env` en la raíz del proyecto a partir de la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Y define tus credenciales:
 
 ```env
 # Token del Bot de Telegram (obtenido con @BotFather)
@@ -131,9 +149,11 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Ejecutar suite de pruebas unitarias
-python -m unittest test_features.py
+python -m unittest discover -s tests
 
-# 4. Iniciar el bot
+# 4. Iniciar el bot (cualquiera de los dos métodos)
+python main.py
+# o
 python bot.py
 ```
 
@@ -145,7 +165,7 @@ python bot.py
 Para que el bot se ejecute en segundo plano, arranque solo al encender el Mac y se reinicie automáticamente si falla:
 
 ```bash
-./setup_macos_service.sh
+./scripts/setup_macos_service.sh
 ```
 
 * **Ver registros en directo**:

@@ -9,15 +9,9 @@ from email.header import decode_header
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, Optional
-from dotenv import load_dotenv
-
-load_dotenv()
+from gabook.config import GMAIL_USER, GMAIL_APP_PASSWORD, IMAP_TIMEOUT
 
 logger = logging.getLogger(__name__)
-
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-IMAP_TIMEOUT = 25
 
 def clean_subject(raw_subject: str) -> str:
     """Decodes email subject headers."""

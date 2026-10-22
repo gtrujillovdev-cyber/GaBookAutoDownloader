@@ -4,7 +4,7 @@
 PLIST_NAME="com.gabookautodownloader.plist"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 PLIST_PATH="$LAUNCH_AGENTS_DIR/$PLIST_NAME"
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_EXEC="$PROJECT_DIR/venv/bin/python"
 
 mkdir -p "$LAUNCH_AGENTS_DIR"
@@ -25,7 +25,7 @@ cat <<EOF > "$PLIST_PATH"
     <key>ProgramArguments</key>
     <array>
         <string>$PYTHON_EXEC</string>
-        <string>$PROJECT_DIR/bot.py</string>
+        <string>$PROJECT_DIR/main.py</string>
     </array>
     <key>WorkingDirectory</key>
     <string>$PROJECT_DIR</string>

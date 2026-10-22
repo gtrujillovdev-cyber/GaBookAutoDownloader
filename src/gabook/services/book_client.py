@@ -6,46 +6,9 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
+from gabook.config import HEADERS, LANG_MAP, DOWNLOADS_DIR
 
 logger = logging.getLogger(__name__)
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-}
-
-LANG_MAP = {
-    "es": "Spanish",
-    "esp": "Spanish",
-    "español": "Spanish",
-    "espanol": "Spanish",
-    "spanish": "Spanish",
-    "castellano": "Spanish",
-    "en": "English",
-    "eng": "English",
-    "ingles": "English",
-    "inglés": "English",
-    "english": "English",
-    "fr": "French",
-    "fra": "French",
-    "francés": "French",
-    "frances": "French",
-    "french": "French",
-    "de": "German",
-    "ger": "German",
-    "alemán": "German",
-    "aleman": "German",
-    "german": "German",
-    "it": "Italian",
-    "italiano": "Italian",
-    "italian": "Italian",
-    "pt": "Portuguese",
-    "portugués": "Portuguese",
-    "portugues": "Portuguese",
-    "portuguese": "Portuguese",
-    "todos": None,
-    "all": None,
-    "any": None
-}
 
 def clean_filename(name: str) -> str:
     """Sanitize string to be safe as a filename."""
@@ -63,7 +26,7 @@ def get_book_cover(title: str, author: str = "") -> Optional[str]:
             if docs and docs[0].get("cover_i"):
                 cover_id = docs[0]["cover_i"]
                 return f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
-    except Exception as e:
+    except Exception:
         pass
     return None
 
@@ -154,15 +117,12 @@ def fetch_libgen_page(base_url: str, query: str, page: int) -> List[Dict]:
     return results
 
 def search_libgen(query: str, max_results: int = 35) -> List[Dict]:
-    """
-    Searches Libgen across multiple pages (pages 1 to 4) concurrently to maximize results.
-    """
+    """Searches Libgen across multiple pages concurrently to maximize results."""
     mirrors = ["https://libgen.li/index.php", "https://libgen.vg/index.php"]
     results = []
     seen = set()
 
     for base_url in mirrors:
-        # Query pages 1, 2, 3, 4 in parallel
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [pool.submit(fetch_libgen_page, base_url, query, p) for p in [1, 2, 3, 4]]
             for f in futures:
@@ -182,9 +142,7 @@ def search_libgen(query: str, max_results: int = 35) -> List[Dict]:
     return results[:max_results]
 
 def search_archive_org(query: str, max_results: int = 25) -> List[Dict]:
-    """
-    Searches Internet Archive (archive.org) for open EPUBs across an expanded range.
-    """
+    """Searches Internet Archive (archive.org) for open EPUBs across an expanded range."""
     url = "https://archive.org/advancedsearch.php"
     params = {
         "q": f"{query} format:EPUB",
@@ -222,14 +180,12 @@ def search_archive_org(query: str, max_results: int = 25) -> List[Dict]:
                     "source": "archive_org"
                 })
     except Exception as e:
-        print(f"Archive.org search error: {e}")
+        logger.warning(f"Archive.org search error: {e}")
 
     return results
 
 def search_openlibrary(query: str, max_results: int = 15) -> List[Dict]:
-    """
-    Searches OpenLibrary for readable full-text EPUB editions.
-    """
+    """Searches OpenLibrary for readable full-text EPUB editions."""
     url = f"https://openlibrary.org/search.json?q={requests.utils.quote(query)}&has_fulltext=true&limit={max_results}"
     results = []
     try:
@@ -258,14 +214,12 @@ def search_openlibrary(query: str, max_results: int = 15) -> List[Dict]:
                     "direct_url": direct_url,
                     "source": "openlibrary"
                 })
-    except Exception as e:
+    except Exception:
         pass
     return results
 
 def search_gutenberg(query: str, max_results: int = 5) -> List[Dict]:
-    """
-    Searches Project Gutenberg (Gutendex) for classic literature EPUBs.
-    """
+    """Searches Project Gutenberg (Gutendex) for classic literature EPUBs."""
     url = f"https://gutendex.com/books/?search={requests.utils.quote(query)}"
     results = []
     try:
@@ -291,20 +245,18 @@ def search_gutenberg(query: str, max_results: int = 5) -> List[Dict]:
                     "direct_url": epub_url,
                     "source": "gutenberg"
                 })
-    except Exception as e:
+    except Exception:
         pass
 
     return results
 
 def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] = "Spanish") -> Tuple[List[Dict], List[Dict]]:
     """
-    Multi-source expanded engine querying Libgen (pages 1-4 in parallel),
-    Archive.org (expanded range), OpenLibrary (full-text epubs), and Gutenberg concurrently.
+    Multi-source expanded engine querying Libgen, Archive.org, OpenLibrary, and Gutenberg concurrently.
     """
     all_books = []
     seen_titles = set()
 
-    # Query all 4 sources concurrently for maximum yield and speed
     with ThreadPoolExecutor(max_workers=4) as executor:
         f_libgen = executor.submit(search_libgen, query, 35)
         f_archive = executor.submit(search_archive_org, query, 25)
@@ -321,7 +273,7 @@ def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] =
                     if norm and norm not in seen_titles:
                         seen_titles.add(norm)
                         all_books.append(b)
-            except Exception as e:
+            except Exception:
                 pass
 
     matching_books = []
@@ -336,16 +288,17 @@ def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] =
 
     return matching_books[:max_results], other_books[:max_results]
 
-def download_epub(book: Dict, output_dir: str = "downloads") -> Optional[str]:
+def download_epub(book: Dict, output_dir: Optional[str] = None) -> Optional[str]:
     """
     Downloads EPUB from direct URL or mirrors and saves locally.
     Uses safe collision-resistant temporary filenames.
     """
-    os.makedirs(output_dir, exist_ok=True)
+    target_dir = output_dir or DOWNLOADS_DIR
+    os.makedirs(target_dir, exist_ok=True)
     safe_title = clean_filename(book.get('title', 'libro')[:45]) or "libro"
     suffix = uuid.uuid4().hex[:6]
     filename = f"{safe_title}_{suffix}.epub"
-    filepath = os.path.join(output_dir, filename)
+    filepath = os.path.join(target_dir, filename)
 
     # 1. Direct download (Archive.org or Gutenberg)
     if book.get("direct_url"):
@@ -383,7 +336,7 @@ def download_epub(book: Dict, output_dir: str = "downloads") -> Optional[str]:
                         dl = "https://libgen.li/" + dl.lstrip("/")
                     download_url = dl
                     break
-        except Exception as e:
+        except Exception:
             continue
 
     if not download_url:

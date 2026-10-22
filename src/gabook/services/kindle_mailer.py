@@ -3,17 +3,15 @@ import smtplib
 import logging
 from email.message import EmailMessage
 from typing import Optional
-from dotenv import load_dotenv
-
-load_dotenv()
+from gabook.config import (
+    GMAIL_USER,
+    GMAIL_APP_PASSWORD,
+    DEFAULT_KINDLE_EMAIL,
+    SMTP_TIMEOUT,
+    MAX_ATTACHMENT_BYTES
+)
 
 logger = logging.getLogger(__name__)
-
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-DEFAULT_KINDLE_EMAIL = os.getenv("KINDLE_EMAIL")
-SMTP_TIMEOUT = 30
-MAX_ATTACHMENT_BYTES = 22 * 1024 * 1024  # 22 MB safety ceiling for Gmail base64 encoding
 
 def send_to_kindle(filepath: str, book_title: Optional[str] = None, recipient_email: Optional[str] = None) -> bool:
     """
