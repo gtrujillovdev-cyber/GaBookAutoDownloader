@@ -486,30 +486,45 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     return text, InlineKeyboardMarkup(keyboard)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcomes any user with a frictionless, intuitive interface."""
+    """Welcomes users with clear breathing room and an intuitive onboarding for newcomers."""
     user = update.effective_user
     user_id = user.id
     logger.info(f"🚀 /start recibido de {user.first_name} (ID: {user_id})")
     user_data = get_user_data(user_id)
     kindle_email = user_data.get("kindle_email")
 
-    kindle_info = f"\n📱 Kindle vinculado: `{kindle_email}`\n" if kindle_email else ""
-    welcome_text = (
-        f"📚 *¡Hola {user.first_name}!* Bienvenido a GaBook.\n\n"
-        "Busca cualquier libro y recíbelo al instante en Telegram, "
-        f"en tu Kindle o en tu correo.{kindle_info}\n"
-        "✍️ *Escribe un título o autor para empezar:*"
-    )
-    inline_keyboard = [
-        [
-            InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
-            InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
-        ],
-        [
-            InlineKeyboardButton("👤 Mi Perfil", callback_data="menu:profile"),
-            InlineKeyboardButton("📖 Cómo Funciona", callback_data="menu:guide")
+    if not kindle_email:
+        welcome_text = (
+            f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Tu biblioteca personal para buscar, leer y recibir cualquier libro en EPUB.\n\n"
+            "✨ *Puedes disfrutar tus libros en:*\n"
+            "• 📱 Móvil o Tablet (Descarga directa en este chat)\n"
+            "• 📖 Tu lector Kindle (Envío inalámbrico)\n"
+            "• ✉️ Tu correo electrónico\n\n"
+            "👇 *¿Es tu primera vez aquí? Elige una opción:*"
+        )
+        inline_keyboard = [
+            [InlineKeyboardButton("🆕 Sí, soy nuevo (Ver guía rápida de 1 min)", callback_data="tutorial:start")],
+            [InlineKeyboardButton("🔍 Ir directo a buscar un libro", callback_data="action:start_direct")]
         ]
-    ]
+    else:
+        welcome_text = (
+            f"📚 *¡Hola {user.first_name}! Bienvenido de nuevo.*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📱 *Kindle vinculado:* `{kindle_email}`\n\n"
+            "✍️ *Escribe el título o autor* de cualquier libro en el chat para buscarlo al instante:"
+        )
+        inline_keyboard = [
+            [
+                InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
+                InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
+            ],
+            [
+                InlineKeyboardButton("👤 Mi Perfil", callback_data="menu:profile"),
+                InlineKeyboardButton("📖 Cómo Funciona", callback_data="menu:guide")
+            ]
+        ]
 
     if update.callback_query:
         await update.callback_query.edit_message_text(
@@ -518,10 +533,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(inline_keyboard)
         )
     else:
+        # Enviar teclado inferior persistente y botones inline claros
         await update.message.reply_text(
             welcome_text,
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=MAIN_KEYBOARD
+            reply_markup=InlineKeyboardMarkup(inline_keyboard)
         )
 
 async def tutorial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

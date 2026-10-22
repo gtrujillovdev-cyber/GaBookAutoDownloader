@@ -381,7 +381,7 @@ class TestBotFeatures(unittest.TestCase):
         self.assertEqual(mock_message.reply_text.call_count, 1)
         args, kwargs = mock_message.reply_text.call_args
         self.assertIn("Bienvenido a GaBook", args[0])
-        self.assertEqual(kwargs.get("reply_markup"), MAIN_KEYBOARD)
+        self.assertIn("Sí, soy nuevo", str(kwargs.get("reply_markup")))
 
     def test_telegram_direct_download_execution(self):
         """Verify that direct Telegram download pipeline runs smoothly, cleans filenames, uploads document, and deletes temp file."""
