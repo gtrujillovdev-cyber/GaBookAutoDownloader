@@ -11,13 +11,15 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     """Minimal HTTP handler to satisfy cloud health checks (Render, Koyeb, Fly.io)."""
 
     def do_GET(self):
+        from gabook.config import GMAIL_SENDER
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.end_headers()
         payload = {
             "status": "healthy",
             "service": "GaBookAutoDownloader",
-            "version": "2.0"
+            "version": "2.0",
+            "sender_email": GMAIL_SENDER
         }
         self.wfile.write(json.dumps(payload).encode("utf-8"))
 
