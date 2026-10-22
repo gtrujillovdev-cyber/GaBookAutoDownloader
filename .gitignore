@@ -1,0 +1,12 @@
+.env
+venv/
+__pycache__/
+*.pyc
+downloads/
+*.epub
+.DS_Store
+*.log
+bot_stdout.log
+bot_stderr.log
+users.json
+

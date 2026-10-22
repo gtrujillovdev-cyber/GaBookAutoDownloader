@@ -1,0 +1,13 @@
+.env
+.git
+.gitignore
+venv/
+downloads/
+*.log
+bot_stdout.log
+bot_stderr.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
