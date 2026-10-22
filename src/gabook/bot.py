@@ -456,11 +456,24 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     current_books = books[start_idx:end_idx]
 
     keyboard = []
+    book_list_text_lines = []
+
     for idx_offset, b in enumerate(current_books):
         global_idx = start_idx + idx_offset
+        num = idx_offset + 1
+
+        # Text line with full readability
+        author_short = b['author'][:28] + ("…" if len(b['author']) > 28 else "")
+        book_list_text_lines.append(
+            f"*{num}.* 📖 *{escape_md(b['title'])}*\n"
+            f"     ✍️ _{escape_md(author_short)}_  ·  📦 {escape_md(b['size'])}\n"
+        )
+
+        # Compact touch button
         title_btn = b['title'][:32] + ("…" if len(b['title']) > 32 else "")
-        button_text = f"📖 {title_btn}  ·  {b['size']}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"dl:{session_id}:{global_idx}")])
+        keyboard.append([
+            InlineKeyboardButton(f"👉 {num}. {title_btn}", callback_data=f"dl:{session_id}:{global_idx}")
+        ])
 
     # Pagination navigation buttons
     nav_row = []
@@ -477,10 +490,13 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
 
     keyboard.append([InlineKeyboardButton("✕ Cerrar", callback_data=f"cancel:{session_id}")])
 
+    books_formatted_list = "\n".join(book_list_text_lines)
     text = (
         f"{note}📚 *Resultados para:* _{escape_md(query)}_\n"
-        f"_(Mostrando {start_idx + 1}-{end_idx} de {total_books} libros en EPUB)_\n\n"
-        "Toca el libro que quieras para ver su ficha y portada:"
+        f"_(Página {page + 1} de {total_pages} — {total_books} libros encontrados)_\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"{books_formatted_list}\n"
+        "👇 *Toca el botón con el número del libro que quieras abrir:*"
     )
 
     return text, InlineKeyboardMarkup(keyboard)
@@ -668,7 +684,7 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_
             pass
 
     clean_query, target_lang = parse_query_and_language(raw_query, default_lang=default_lang)
-    lang_display = target_lang if target_lang else "Todos"
+    lang_display = "Español" if target_lang == "Spanish" else (target_lang if target_lang else "Todos")
     label = display_name or clean_query
 
     target_sender = update.message if update.message else (update.callback_query.message if update.callback_query else None)
@@ -677,8 +693,8 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_
 
     status_msg = await target_sender.reply_text(
         f"🔍 *Buscando:* _{escape_md(label)}_\n"
-        f"🌐 *Idioma:* `{lang_display}`\n"
-        f"_Buscando opciones en formato EPUB..._",
+        f"🌐 *Idioma:* {escape_md(lang_display)}\n\n"
+        "_Buscando en bibliotecas digitales y verificando ediciones en EPUB..._",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -1543,29 +1559,32 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         synopsis_future = loop.run_in_executor(None, get_book_synopsis, b['title'], b['author'])
         cover_url, synopsis = await asyncio.gather(cover_future, synopsis_future)
 
-        synopsis_block = f"📝 *Sinopsis:* _{escape_md(synopsis)}_\n\n" if synopsis else ""
-        
+        lang_name = "Español" if b.get('lang') in ["Spanish", "es", "spa"] else (b.get('lang') or "Español")
+
+        synopsis_block = f"📝 *Sinopsis:* \n_{escape_md(synopsis)}_\n\n" if synopsis else "📝 *Sinopsis:* _Edición completa disponible en formato EPUB._\n\n"
+
         # Details to show only if configured/relevant
         meta_lines = []
         if kindle_email:
-            meta_lines.append(f"📱 *Kindle:* `{kindle_email}`")
+            meta_lines.append(f"📱 *Kindle vinculado:* `{kindle_email}`")
         if personal_email:
-            meta_lines.append(f"✉️ *Correo:* `{personal_email}`")
+            meta_lines.append(f"✉️ *Correo habitual:* `{personal_email}`")
         if kindle_email and storage_info.get("free_display"):
-            meta_lines.append(f"💾 *Espacio Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*")
-        
+            meta_lines.append(f"💾 *Espacio en Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*")
+
         extra_meta = "\n".join(meta_lines) + "\n\n" if meta_lines else ""
 
         preview_text = (
-            "📖 *FICHA DEL LIBRO*\n"
+            "📖 *FICHA Y DETALLES DEL LIBRO*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📌 *{escape_md(b['title'])}*\n"
-            f"✍️ _{escape_md(b['author'])}_\n"
-            f"🌐 {escape_md(b['lang'])}  ·  📅 {escape_md(year_str)}  ·  📦 {escape_md(b['size'])}\n\n"
+            f"📌 *Título:* *{escape_md(b['title'])}*\n"
+            f"✍️ *Autor:* _{escape_md(b['author'])}_\n"
+            f"🌐 *Idioma:* {escape_md(lang_name)}  ·  📅 *Año:* {escape_md(year_str)}\n"
+            f"📦 *Formato:* EPUB ({escape_md(b['size'])})\n\n"
             f"{synopsis_block}"
             f"{extra_meta}"
             f"{low_space_alert}"
-            "¿A dónde deseas enviarlo?"
+            "👇 *¿Dónde prefieres recibirlo?*"
         )
 
         preview_keyboard = [

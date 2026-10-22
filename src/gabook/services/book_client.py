@@ -16,29 +16,48 @@ def clean_filename(name: Optional[str]) -> str:
         return ""
     return re.sub(r'[\/*?:"<>|]', "", str(name)).strip()
 
-def get_book_cover(title: str, author: str = "") -> Optional[str]:
-    """Retrieves book cover image URL from OpenLibrary."""
-    try:
-        clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()[:40]
-        q = f"{clean_t} {author}".strip()
-        url = f"https://openlibrary.org/search.json?q={requests.utils.quote(q)}&limit=1"
-        r = requests.get(url, timeout=3)
-        if r.status_code == 200:
-            docs = r.json().get("docs", [])
-            if docs and docs[0].get("cover_i"):
-                cover_id = docs[0]["cover_i"]
-                return f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
-    except Exception:
-        pass
-    return None
-
 def get_book_synopsis(title: str, author: str = "") -> Optional[str]:
-    """Retrieves a brief synopsis or first sentence from OpenLibrary."""
+    """
+    Retrieves a rich, accurate Spanish synopsis using Wikipedia ES with smart fallback.
+    Avoids short or poor English summaries.
+    """
+    headers = {"User-Agent": "GaBookBot/2.0 (https://github.com/gtrujillovdev-cyber/GaBookAutoDownloader)"}
+
+    # 1. Clean title for Wikipedia query
+    clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()
+    clean_t_no_art = re.sub(r'^(el|la|los|las|un|una|unos|unas)\s+', '', clean_t, flags=re.IGNORECASE).strip()
+
+    search_candidates = [
+        f"{clean_t} (novela)",
+        f"{clean_t} (libro)",
+        clean_t
+    ]
+    if clean_t_no_art and clean_t_no_art != clean_t:
+        search_candidates.append(f"{clean_t_no_art} (novela)")
+        search_candidates.append(clean_t_no_art)
+
+    for cand in search_candidates:
+        try:
+            url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(cand)}"
+            r = requests.get(url, headers=headers, timeout=2.5)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("type") == "standard" and data.get("extract"):
+                    extract = data["extract"].strip()
+                    # Filter out useless disambiguation extracts
+                    if not extract.lower().startswith("puede referirse a") and not extract.lower().startswith("hace referencia a"):
+                        clean_text = re.sub(r'[*_`\[\]<>]', '', extract)
+                        if len(clean_text) > 420:
+                            clean_text = clean_text[:417] + "…"
+                        return clean_text
+        except Exception:
+            pass
+
+    # 2. Fallback to OpenLibrary if Wikipedia has no match
     try:
-        clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()[:40]
-        q = f"{clean_t} {author}".strip()
+        q = f"{clean_t} {author}".strip()[:40]
         url = f"https://openlibrary.org/search.json?q={requests.utils.quote(q)}&limit=1"
-        r = requests.get(url, timeout=3)
+        r = requests.get(url, timeout=2.5)
         if r.status_code == 200:
             docs = r.json().get("docs", [])
             if docs:
@@ -48,23 +67,55 @@ def get_book_synopsis(title: str, author: str = "") -> Optional[str]:
                     raw_text = first_sent.get("value", "") if isinstance(first_sent, dict) else (first_sent[0] if isinstance(first_sent, list) else str(first_sent))
                     if raw_text:
                         clean_text = re.sub(r'[*_`\[\]<>]', '', raw_text).strip()
-                        return clean_text[:200] + ("…" if len(clean_text) > 200 else "")
+                        return clean_text[:350] + ("…" if len(clean_text) > 350 else "")
 
                 work_key = doc.get("key")
                 if work_key:
-                    w_resp = requests.get(f"https://openlibrary.org{work_key}.json", timeout=2.5)
+                    w_resp = requests.get(f"https://openlibrary.org{work_key}.json", timeout=2.0)
                     if w_resp.status_code == 200:
                         desc = w_resp.json().get("description")
                         raw_desc = desc.get("value", "") if isinstance(desc, dict) else str(desc or "")
                         if raw_desc:
                             clean_desc = re.sub(r'[*_`\[\]<>]', '', raw_desc).strip()
-                            sentences = re.split(r'(?<=[.!?])\s+', clean_desc)
-                            short_desc = " ".join(sentences[:2]).strip()
-                            if len(short_desc) > 200:
-                                short_desc = short_desc[:197] + "…"
-                            return short_desc
+                            if len(clean_desc) > 350:
+                                clean_desc = clean_desc[:347] + "…"
+                            return clean_desc
     except Exception:
         pass
+
+    return None
+
+def get_book_cover(title: str, author: str = "") -> Optional[str]:
+    """Retrieves high quality book cover image URL from Wikipedia or OpenLibrary."""
+    headers = {"User-Agent": "GaBookBot/2.0 (https://github.com/gtrujillovdev-cyber/GaBookAutoDownloader)"}
+    clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()
+
+    # 1. Check Wikipedia thumbnail
+    for cand in [f"{clean_t} (novela)", f"{clean_t} (libro)", clean_t]:
+        try:
+            url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(cand)}"
+            r = requests.get(url, headers=headers, timeout=2.0)
+            if r.status_code == 200:
+                data = r.json()
+                thumb = data.get("thumbnail", {}).get("source")
+                if thumb:
+                    return thumb
+        except Exception:
+            pass
+
+    # 2. OpenLibrary large cover
+    try:
+        q = f"{clean_t} {author}".strip()[:40]
+        url = f"https://openlibrary.org/search.json?q={requests.utils.quote(q)}&limit=1"
+        r = requests.get(url, timeout=2.5)
+        if r.status_code == 200:
+            docs = r.json().get("docs", [])
+            if docs and docs[0].get("cover_i"):
+                cover_id = docs[0]["cover_i"]
+                return f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+    except Exception:
+        pass
+
     return None
 
 def parse_query_and_language(raw_text: str, default_lang: Optional[str] = "Spanish") -> Tuple[str, Optional[str]]:
@@ -153,15 +204,30 @@ def fetch_libgen_page(base_url: str, query: str, page: int) -> List[Dict]:
         pass
     return results
 
-def search_libgen(query: str, max_results: int = 35) -> List[Dict]:
-    """Searches Libgen across multiple pages concurrently to maximize results."""
-    mirrors = ["https://libgen.li/index.php", "https://libgen.vg/index.php"]
+def search_libgen(query: str, max_results: int = 30) -> List[Dict]:
+    """Searches Libgen across prioritized mirrors concurrently with fast response."""
+    base_url = "https://libgen.li/index.php"
     results = []
     seen = set()
 
-    for base_url in mirrors:
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = [pool.submit(fetch_libgen_page, base_url, query, p) for p in [1, 2, 3, 4]]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(fetch_libgen_page, base_url, query, p) for p in [1, 2, 3]]
+        for f in futures:
+            try:
+                page_books = f.result()
+                for b in page_books:
+                    key = (b["title"].lower()[:30], b["author"].lower()[:20])
+                    if key not in seen:
+                        seen.add(key)
+                        results.append(b)
+            except Exception:
+                pass
+
+    # If first mirror yields very few, try backup mirror with limit 2 pages
+    if len(results) < 5:
+        backup_url = "https://libgen.vg/index.php"
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(fetch_libgen_page, backup_url, query, p) for p in [1, 2]]
             for f in futures:
                 try:
                     page_books = f.result()
@@ -172,9 +238,6 @@ def search_libgen(query: str, max_results: int = 35) -> List[Dict]:
                             results.append(b)
                 except Exception:
                     pass
-
-        if len(results) >= max_results:
-            break
 
     return results[:max_results]
 
