@@ -8,15 +8,12 @@
 
 Para que Amazon permita que el bot meta libros en tu dispositivo Kindle, cada lector debe autorizar al bot:
 
-1. Entra a tu cuenta de Amazon en este enlace directo:  
+1. **Abre el bot en Telegram y escribe `/autorizar`** (o toca el botón **`[ 🛡️ Autorizar en Amazon ]`** en tu perfil).
+2. **Toca sobre el correo que aparece en el mensaje para copiarlo** con 1 solo toque en tu móvil.
+3. Pulsa el botón **`[ 🔗 Abrir Amazon.es (Ajustes) ]`** o entra directamente aquí:  
    👉 [Preferencias de Documentos Personales de Amazon](https://www.amazon.es/hz/mycd/myx#/home/settings/payment)
-2. Baja hasta el apartado **"Configuración de documentos personales"**.
-3. En la sección **"Lista de direcciones de correo electrónico aprobadas para documentos personales"**, pulsa en **"Añadir nueva dirección"** e introduce el correo remitente configurado en tu bot (el valor de `GMAIL_USER` en tu `.env`).
-4. Abre Telegram y entra en tu bot.
-5. Pulsa el botón **Iniciar** y toca tu dispositivo:
-   * `[ 👨‍🦳 Kindle de Papá ]`
-   * `[ 👦 Kindle de Gonzalo ]`
-   * `[ 👤 Mi Kindle ]`
+4. En la sección **"Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales"**, pulsa en **"Añadir nueva dirección"**, pega el correo copiado y pulsa Guardar.
+5. Abre el bot en Telegram, toca **`🎯 Mi Kindle`** y selecciona tu perfil familiar (o pulsa **`[ ✏️ Configurar otro Kindle ]`** si eres un usuario nuevo).
 
 ¡Y listo! Ya no tendrás que volver a configurar nada más.
 

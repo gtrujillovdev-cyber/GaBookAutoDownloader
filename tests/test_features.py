@@ -280,5 +280,15 @@ class TestBotFeatures(unittest.TestCase):
         self.assertIn("amazon.es", markup.inline_keyboard[0][0].url)
         self.assertIn("amazon.com", markup.inline_keyboard[1][0].url)
 
+    def test_guide_markup(self):
+        """Verify the user onboarding guide generates properly."""
+        from gabook.bot import build_guide_markup
+        from gabook.config import GMAIL_SENDER
+
+        text, markup = build_guide_markup()
+        self.assertIn("GUÍA DE USO", text)
+        self.assertIn(GMAIL_SENDER, text)
+        self.assertTrue(len(markup.inline_keyboard) >= 3)
+
 if __name__ == "__main__":
     unittest.main()

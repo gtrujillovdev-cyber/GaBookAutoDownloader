@@ -4,6 +4,62 @@ Bot autónomo de Telegram para la búsqueda multi-fuente, previsualización inte
 
 ---
 
+## 📖 Guía Rápida de Inicio: Cómo usar el Bot (Paso a Paso)
+
+Con este bot puedes pedir cualquier libro desde Telegram y tenerlo listo para leer en tu lector Kindle en menos de un minuto, sin cables ni ordenadores.
+
+### 🚀 Paso 1: Configuración Inicial *(Solo se hace 1 vez, 1 minuto)*
+
+Amazon bloquea los envíos a Kindle si el remitente no está en su lista blanca. Para autorizar al bot:
+
+1. **Abre el bot en Telegram y pulsa Iniciar.**
+2. **Autoriza el correo del bot en Amazon:**
+   * En el chat, escribe `/autorizar` o pulsa el botón **`[ 🛡️ Autorizar en Amazon ]`**.
+   * Toca el correo remitente que aparece en pantalla para copiarlo con 1 solo toque.
+   * Pulsa el botón **`[ 🔗 Abrir Amazon.es (Ajustes) ]`** (te lleva directo a tu cuenta de Amazon).
+   * En la sección *"Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales"*, pulsa **"Añadir una nueva dirección"**, pega el correo y pulsa Guardar.
+3. **Conecta tu Kindle al bot:**
+   * Toca **`🎯 Mi Kindle`** en la barra inferior y elige tu perfil familiar.
+   * Si eres un usuario nuevo, pulsa **`[ ✏️ Configurar otro Kindle ]`** y escribe tu dirección `@kindle.com` *(la encuentras en tu Kindle en Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle)*.
+
+> ¡Listo! Nunca más tendrás que volver a configurar nada.
+
+---
+
+### 🔍 Paso 2: Cómo pedir cualquier libro
+
+Tienes tres formas muy cómodas de pedir lo que quieras:
+
+* **Opción A (Escribir):** Escribe el título o el autor directamente en el chat, tal como hablarías con una persona:
+  * `Dune`
+  * `El problema de los 3 cuerpos`
+  * `Stephen King`
+  * `Carmen Mola`
+  * *(Si buscas en otro idioma, añade el idioma al final: `Atomic Habits en inglés`)*.
+* **Opción B (Explorar Temas 📚):** Si no sabes qué leer, pulsa el botón **`📚 Explorar por Temas`** en la barra inferior para navegar entre 24 géneros literarios (Novela histórica, Ciencia ficción, Negra, Filosofía, etc.).
+* **Opción C (Nota de Voz 🎙️):** Mantén pulsado el micrófono de Telegram y di en voz alta lo que buscas (ej. *"Búscame Los Pilares de la Tierra"*).
+
+---
+
+### 📦 Paso 3: Previsualización y Envío
+
+1. En la lista de resultados, **toca el libro** que más te interese.
+2. Se abrirá la **Ficha del Libro** con su portada oficial en alta definición, sinopsis, año, idioma y tamaño.
+3. Pulsa el botón **`[ 🚀 Enviar a mi Kindle ]`**.
+4. El bot descargará el archivo, verificará el formato y te confirmará el envío en pocos segundos.
+
+---
+
+### 📱 Paso 4: Cómo abrirlo y leerlo en tu Kindle físico
+
+1. Enciende tu lector Kindle y asegúrate de que el **Wi-Fi esté activado**.
+2. Desliza el dedo desde la parte superior de la pantalla hacia abajo y pulsa el icono de **Sincronizar** (las dos flechas en círculo).
+3. **⚠️ Truco para Kindles modernos (Últimos modelos):**
+   * Los libros enviados por correo no se guardan en la pestaña "Libros" (reservada para compras en la tienda de Amazon).
+   * Comprueba el filtro superior de tu Biblioteca y asegúrate de tener seleccionado **"Documentos"** o **"Todos"**.
+
+---
+
 ## 🌟 Características Destacadas
 
 * **Motor Multi-Fuente Paralelo**: Consulta simultáneamente **Libgen** (ficción contemporánea, bestsellers y no-ficción), **Internet Archive** (libros raros y descatalogados), **OpenLibrary** (ediciones de texto completo) y **Project Gutenberg** (clásicos de la literatura).
