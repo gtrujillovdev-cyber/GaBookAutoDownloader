@@ -248,6 +248,82 @@ def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
     ]
     return text, InlineKeyboardMarkup(keyboard)
 
+def build_tutorial_start_markup() -> Tuple[str, InlineKeyboardMarkup]:
+    """Generates step 0 of onboarding tutorial: device choice."""
+    text = (
+        "👋 *TUTORIAL DE INICIO: GABOOK*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "¿Dónde prefieres leer tus libros?\n"
+        "Elige tu dispositivo para configurarlo en 1 minuto:"
+    )
+    keyboard = [
+        [InlineKeyboardButton("📖 En mi lector Kindle (Inalámbrico)", callback_data="tutorial:kindle_step1")],
+        [InlineKeyboardButton("📱 En Móvil, Tablet o PC", callback_data="tutorial:mobile")],
+        [InlineKeyboardButton("🔍 Saltar e ir directo a buscar", callback_data="action:start_direct")]
+    ]
+    return text, InlineKeyboardMarkup(keyboard)
+
+def build_tutorial_mobile_markup() -> Tuple[str, InlineKeyboardMarkup]:
+    """Explains direct reading on mobile/tablet/PC with zero setup."""
+    text = (
+        "📱 *LECTURA EN MÓVIL, TABLET O PC*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "¡Excelente! No necesitas configurar nada ni autorizar correos.\n\n"
+        "1️⃣ Escribe el libro o autor en el chat (o envía un audio 🎙️).\n"
+        "2️⃣ Toca el libro en la lista de resultados.\n"
+        "3️⃣ Pulsa **'📥 Descargar en Telegram'**.\n\n"
+        "El archivo `.epub` se descargará al instante en este chat para leerlo en Apple Books, Google Play Libros o tu app favorita.\n\n"
+        "¿Qué deseas hacer ahora?"
+    )
+    keyboard = [
+        [InlineKeyboardButton("🔍 Buscar mi primer libro", callback_data="action:new_search")],
+        [InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")],
+        [InlineKeyboardButton("📖 Configurar Kindle también", callback_data="tutorial:kindle_step1")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="tutorial:start")]
+    ]
+    return text, InlineKeyboardMarkup(keyboard)
+
+def build_tutorial_kindle_step1_markup() -> Tuple[str, InlineKeyboardMarkup]:
+    """Step 1 of Kindle setup: Amazon Whitelist Authorization."""
+    text = (
+        "📖 *TUTORIAL KINDLE (Paso 1 de 2)*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🛡️ *Autorizar el Bot en Amazon*\n\n"
+        "Amazon requiere que autorices el correo del bot para entregarte libros sin cables (solo se hace **1 vez**):\n\n"
+        "1️⃣ *Copia este correo del bot* (toca para copiar):\n"
+        f"`{GMAIL_SENDER}`\n\n"
+        "2️⃣ Pulsa el botón de abajo según tu tienda Amazon habitual.\n"
+        "3️⃣ En *'Direcciones autorizadas para documentos personales'*, pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
+        "👇 Cuando lo hayas añadido en Amazon, pulsa en Continuar:"
+    )
+    keyboard = [
+        [InlineKeyboardButton("🔗 Abrir Amazon.es (España)", url="https://www.amazon.es/hz/mycd/myx#/home/settings/payment")],
+        [InlineKeyboardButton("🔗 Abrir Amazon.com (Internacional)", url="https://www.amazon.com/hz/mycd/myx#/home/settings/payment")],
+        [InlineKeyboardButton("✅ Ya lo autoricé ➔ Continuar al Paso 2", callback_data="tutorial:kindle_step2")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="tutorial:start")]
+    ]
+    return text, InlineKeyboardMarkup(keyboard)
+
+def build_tutorial_kindle_step2_markup() -> Tuple[str, InlineKeyboardMarkup]:
+    """Step 2 of Kindle setup: Link device email."""
+    text = (
+        "🎯 *TUTORIAL KINDLE (Paso 2 de 2)*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📱 *Vincular tu dispositivo*\n\n"
+        "Ahora indica al bot qué lector Kindle recibirá tus libros:\n\n"
+        "• *Si eres familiar:* Toca en **Perfiles Familiares** y elige tu nombre.\n"
+        "• *O escribe tu dirección:* Toca en **Configurar mi @kindle.com**.\n\n"
+        "💡 *¿Dónde ver tu correo Kindle?*\n"
+        "En tu Kindle físico: ve a *Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle*."
+    )
+    keyboard = [
+        [InlineKeyboardButton("✏️ Configurar mi @kindle.com", callback_data="menu:custom_kindle")],
+        [InlineKeyboardButton("👨‍👩‍👧‍👦 Perfiles Familiares (Papá, Gonzalo...)", callback_data="menu:family_presets")],
+        [InlineKeyboardButton("🔍 Ya lo configuraré, ir a buscar", callback_data="action:start_direct")],
+        [InlineKeyboardButton("⬅️ Volver al Paso 1", callback_data="tutorial:kindle_step1")]
+    ]
+    return text, InlineKeyboardMarkup(keyboard)
+
 def build_history_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
     """Generates the recent readings list with 1-tap re-search buttons."""
     history = get_user_history(user_id)
@@ -397,40 +473,61 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     return text, InlineKeyboardMarkup(keyboard)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcomes any user with a concise, universal greeting without clutter."""
+    """Welcomes any user, offers guided onboarding if new, or takes existing users straight to search."""
     user = update.effective_user
     user_id = user.id
     logger.info(f"🚀 /start recibido de {user.first_name} (ID: {user_id})")
     user_data = get_user_data(user_id)
     kindle_email = user_data.get("kindle_email")
 
-    if kindle_email:
-        status_line = f"📱 *Kindle vinculado:* `{kindle_email}`\n\n"
-    else:
-        status_line = "📖 _Descarga libros en EPUB para móvil, tablet, PC o Kindle._\n\n"
-
-    welcome_text = (
-        f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
-        f"{status_line}"
-        "✍️ *Escribe el título o autor* que buscas para empezar:"
-    )
-
-    inline_keyboard = [
-        [
-            InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
-            InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
-        ],
-        [
-            InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile"),
-            InlineKeyboardButton("❓ Ayuda", callback_data="menu:guide")
+    if not kindle_email:
+        welcome_text = (
+            f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
+            "Tu biblioteca para descargar libros en EPUB o recibirlos en tu Kindle.\n\n"
+            "¿Es la primera vez que usas el bot?\n"
+            "👇 *Elige una opción para empezar:*"
+        )
+        inline_keyboard = [
+            [InlineKeyboardButton("🆕 Sí, soy nuevo (Ver tutorial y autorizar)", callback_data="tutorial:start")],
+            [InlineKeyboardButton("🚀 Ya sé cómo funciona (Ir a buscar)", callback_data="action:start_direct")]
         ]
-    ]
+    else:
+        welcome_text = (
+            f"📚 *¡Hola {user.first_name}! Bienvenido de nuevo a GaBook.*\n"
+            f"📱 *Kindle vinculado:* `{kindle_email}`\n\n"
+            "✍️ *Escribe el título o autor* que buscas para empezar:"
+        )
+        inline_keyboard = [
+            [
+                InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
+                InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
+            ],
+            [
+                InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile"),
+                InlineKeyboardButton("🎓 Ver Tutorial", callback_data="tutorial:start")
+            ]
+        ]
 
-    await update.message.reply_text(
-        welcome_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard)
-    )
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            welcome_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard)
+        )
+    else:
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard)
+        )
+
+async def tutorial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Presents the step-by-step onboarding tutorial."""
+    text, reply_markup = build_tutorial_start_markup()
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
 
 async def temas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays paginated thematic categories for exploration."""
@@ -733,8 +830,13 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await kindle_command(update, context)
         return
 
-    # 4. Keywords for help and user guide
-    if q_lower in ["ayuda", "como funciona", "cómo funciona", "instrucciones", "que hago", "qué hago", "guia", "guía", "tutorial", "manual"]:
+    # 4. Keywords for onboarding tutorial
+    if q_lower in ["tutorial", "nuevo", "soy nuevo", "primeros pasos", "paso a paso"]:
+        await tutorial_command(update, context)
+        return
+
+    # 5. Keywords for help and user guide
+    if q_lower in ["ayuda", "como funciona", "cómo funciona", "instrucciones", "que hago", "qué hago", "guia", "guía", "manual"]:
         await guia_command(update, context)
         return
 
@@ -1082,6 +1184,45 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text, reply_markup = build_search_page_markup(session_id, 0)
         await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    # Handle onboarding tutorial
+    if data == "tutorial:start":
+        text, reply_markup = build_tutorial_start_markup()
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data == "tutorial:mobile":
+        text, reply_markup = build_tutorial_mobile_markup()
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data == "tutorial:kindle_step1":
+        text, reply_markup = build_tutorial_kindle_step1_markup()
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data == "tutorial:kindle_step2":
+        text, reply_markup = build_tutorial_kindle_step2_markup()
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data == "action:start_direct":
+        text = (
+            "📚 *¡Listo para buscar!*\n\n"
+            "✍️ *Escribe el título o autor* que buscas en el chat (o envía una nota de voz 🎙️):"
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
+                InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
+            ],
+            [
+                InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile"),
+                InlineKeyboardButton("🎓 Ver Tutorial", callback_data="tutorial:start")
+            ]
+        ]
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     # Handle profile and settings menus
@@ -1595,7 +1736,7 @@ def main():
     application.add_handler(CommandHandler("kindle", kindle_command))
     application.add_handler(CommandHandler("perfil", perfil_command))
     application.add_handler(CommandHandler("guia", guia_command))
-    application.add_handler(CommandHandler("tutorial", guia_command))
+    application.add_handler(CommandHandler("tutorial", tutorial_command))
     application.add_handler(CommandHandler("manual", guia_command))
     application.add_handler(CommandHandler("autorizar", autorizar_command))
     application.add_handler(CommandHandler("amazon", autorizar_command))

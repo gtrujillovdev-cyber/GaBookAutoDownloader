@@ -290,5 +290,36 @@ class TestBotFeatures(unittest.TestCase):
         self.assertIn(GMAIL_SENDER, text)
         self.assertTrue(len(markup.inline_keyboard) >= 3)
 
+    def test_tutorial_markup_flow(self):
+        """Verify the interactive onboarding tutorial markups."""
+        from gabook.bot import (
+            build_tutorial_start_markup,
+            build_tutorial_mobile_markup,
+            build_tutorial_kindle_step1_markup,
+            build_tutorial_kindle_step2_markup
+        )
+        from gabook.config import GMAIL_SENDER
+
+        # Step 0: Choice of device
+        t0_text, t0_markup = build_tutorial_start_markup()
+        self.assertIn("TUTORIAL DE INICIO", t0_text)
+        self.assertEqual(len(t0_markup.inline_keyboard), 3)
+
+        # Mobile path
+        m_text, m_markup = build_tutorial_mobile_markup()
+        self.assertIn("MÓVIL", m_text)
+        self.assertTrue(len(m_markup.inline_keyboard) >= 3)
+
+        # Kindle Step 1: Whitelist
+        k1_text, k1_markup = build_tutorial_kindle_step1_markup()
+        self.assertIn("Paso 1 de 2", k1_text)
+        self.assertIn(GMAIL_SENDER, k1_text)
+        self.assertIn("amazon.es", k1_markup.inline_keyboard[0][0].url)
+
+        # Kindle Step 2: Link Kindle
+        k2_text, k2_markup = build_tutorial_kindle_step2_markup()
+        self.assertIn("Paso 2 de 2", k2_text)
+        self.assertTrue(len(k2_markup.inline_keyboard) >= 3)
+
 if __name__ == "__main__":
     unittest.main()
