@@ -355,5 +355,33 @@ class TestBotFeatures(unittest.TestCase):
         self.assertIn("👤 Mi Perfil", main_btns)
         self.assertIn("📖 Cómo Funciona", main_btns)
 
+    def test_start_command_single_clean_bubble(self):
+        """Verify that /start command sends a single clean message with MAIN_KEYBOARD without duplicate bubbles."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from gabook.bot import start_command, MAIN_KEYBOARD
+
+        mock_user = MagicMock()
+        mock_user.id = 999999
+        mock_user.first_name = "Gabriel"
+
+        mock_message = MagicMock()
+        mock_message.reply_text = AsyncMock()
+
+        mock_update = MagicMock()
+        mock_update.effective_user = mock_user
+        mock_update.callback_query = None
+        mock_update.message = mock_message
+
+        mock_context = MagicMock()
+
+        asyncio.run(start_command(mock_update, mock_context))
+
+        # Exactly 1 message must be sent to the user
+        self.assertEqual(mock_message.reply_text.call_count, 1)
+        args, kwargs = mock_message.reply_text.call_args
+        self.assertIn("¡Hola Gabriel! Bienvenido a GaBook", args[0])
+        self.assertEqual(kwargs.get("reply_markup"), MAIN_KEYBOARD)
+
 if __name__ == "__main__":
     unittest.main()

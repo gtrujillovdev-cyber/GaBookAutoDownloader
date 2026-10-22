@@ -517,11 +517,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_KEYBOARD
         )
-        await update.message.reply_text(
-            "👇 *O elige una opción rápida:*",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard)
-        )
 
 async def tutorial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Presents the step-by-step onboarding tutorial."""
