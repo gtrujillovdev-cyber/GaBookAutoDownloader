@@ -13,9 +13,9 @@ PORT = int(os.getenv("PORT")) if os.getenv("PORT") and os.getenv("PORT").isdigit
 
 # Credentials & Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_USER = os.getenv("GMAIL_USER", "gabook.sender@gmail.com")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-GMAIL_SENDER = GMAIL_USER or "tu_correo@gmail.com"
+GMAIL_SENDER = os.getenv("GMAIL_SENDER") or GMAIL_USER or "gabook.sender@gmail.com"
 DEFAULT_KINDLE_EMAIL = os.getenv("KINDLE_EMAIL", "tu_kindle@kindle.com")
 
 # Network & Protocol Timeouts

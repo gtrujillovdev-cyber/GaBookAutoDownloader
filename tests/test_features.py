@@ -275,7 +275,7 @@ class TestBotFeatures(unittest.TestCase):
         from gabook.config import GMAIL_SENDER
 
         text, markup = build_amazon_whitelist_markup()
-        self.assertIn("AUTORIZAR TU KINDLE EN AMAZON", text)
+        self.assertIn("AUTORIZAR", text)
         self.assertIn(GMAIL_SENDER, text)
         self.assertIn("amazon.es", markup.inline_keyboard[0][0].url)
         self.assertIn("amazon.com", markup.inline_keyboard[1][0].url)
@@ -286,7 +286,7 @@ class TestBotFeatures(unittest.TestCase):
         from gabook.config import GMAIL_SENDER
 
         text, markup = build_guide_markup()
-        self.assertIn("GUÍA DE USO", text)
+        self.assertIn("GUÍA", text)
         self.assertIn(GMAIL_SENDER, text)
         self.assertTrue(len(markup.inline_keyboard) >= 3)
 

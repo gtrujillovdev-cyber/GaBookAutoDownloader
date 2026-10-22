@@ -200,53 +200,40 @@ def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
     return text, InlineKeyboardMarkup(keyboard)
 
 def build_guide_markup() -> Tuple[str, InlineKeyboardMarkup]:
-    """Generates the comprehensive user guide with clear step-by-step instructions."""
+    """Generates the concise, universal user guide for all devices and e-readers."""
     text = (
-        "📖 *GUÍA DE USO: ASISTENTE KINDLE*\n"
+        "📖 *GUÍA RÁPIDA: CÓMO USAR GABOOK*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "¡Bienvenido! Sigue estos 4 pasos rápidos para pedir cualquier libro:\n\n"
-        "1️⃣ *PASO 1: Autorizar al Bot en Amazon (Solo la 1ª vez)*\n"
-        "Amazon exige aprobar los correos que te envían libros:\n"
-        f"• Copia este correo: `{GMAIL_SENDER}`\n"
-        "• Entra en tu cuenta de Amazon y en *'Direcciones autorizadas'* pégalo y guarda.\n"
-        "_(Toca el botón '🛡️ Autorizar en Amazon' abajo para hacerlo en 15 seg)_\n\n"
-        "2️⃣ *PASO 2: Vincular tu Kindle en el Bot*\n"
-        "• Toca *'🎯 Mi Kindle'* abajo y elige tu perfil o escribe tu dirección `@kindle.com`.\n"
-        "_(La encuentras en tu Kindle físico en: Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle)_\n\n"
-        "3️⃣ *PASO 3: Pedir tu libro*\n"
-        "• Escribe el nombre del libro o autor en el chat (ej: `Dune`, `Carmen Mola`).\n"
-        "• O toca *'📚 Explorar por Temas'* para navegar entre 24 géneros.\n"
-        "• O pulsa el botón del micrófono y envía una nota de voz.\n"
-        "• En la ficha, pulsa *'🚀 Enviar a mi Kindle'*.\n\n"
-        "4️⃣ *PASO 4: Recibirlo en tu lector*\n"
-        "• Enciende el Wi-Fi de tu Kindle y pulsa el icono de *Sincronizar*.\n"
-        "• 💡 *Truco en Kindles modernos:* Si no lo ves en la pantalla principal, "
-        "comprueba el filtro superior de tu biblioteca y selecciona **'Documentos'** o **'Todos'**.\n\n"
+        "1️⃣ *Buscar un libro:*\n"
+        "Escribe el título o autor en el chat (o envía un audio 🎙️).\n\n"
+        "2️⃣ *Opciones de descarga en la ficha:*\n"
+        "• 📥 *En Telegram:* Descarga directa en EPUB para móvil, tablet o PC.\n"
+        "• 🚀 *A tu Kindle:* Envío inalámbrico directo a tu lector de tinta electrónica.\n"
+        "• ✉️ *A tu Correo:* Recíbelo adjunto en tu bandeja de email.\n\n"
+        "3️⃣ *Solo si usas Kindle (1 sola vez):*\n"
+        f"Autoriza en tu cuenta de Amazon el remitente: `{GMAIL_SENDER}`\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "👇 *Toca un botón para empezar:*"
+        "👇 *¿Qué deseas hacer ahora?*"
     )
     keyboard = [
-        [InlineKeyboardButton("🛡️ Autorizar en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
-        [InlineKeyboardButton("🎯 Configurar mi Kindle", callback_data="menu:kindle")],
         [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")],
-        [InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")]
+        [InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")],
+        [InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile")],
+        [InlineKeyboardButton("🛡️ Autorizar en Amazon", callback_data="menu:amazon_whitelist")]
     ]
     return text, InlineKeyboardMarkup(keyboard)
 
 def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
     """Generates the 1-touch guided assistant to whitelist the bot sender on Amazon."""
     text = (
-        "🛡️ *AUTORIZAR TU KINDLE EN AMAZON*\n"
+        "🛡️ *AUTORIZAR ENVÍOS EN AMAZON (KINDLE)*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Amazon bloquea los libros enviados por email si el remitente no está autorizado. "
-        "Solo tienes que hacer este paso **1 vez en la vida** (tarda 15 segundos):\n\n"
-        "1️⃣ *Copia este correo del bot* (toca sobre él para copiar):\n"
+        "Amazon requiere que autorices el correo del bot para entregar libros en tu Kindle:\n\n"
+        "1️⃣ *Copia el correo del bot* (toca para copiar):\n"
         f"`{GMAIL_SENDER}`\n\n"
-        "2️⃣ *Abre los ajustes de tu cuenta de Amazon:*\n"
-        "Toca el botón que corresponda a tu tienda habitual abajo.\n\n"
-        "3️⃣ En la sección *'Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales'*, "
-        "pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
-        "✅ ¡Listo! A partir de ese momento, cualquier libro que pidas te llegará directamente a tu Kindle físico."
+        "2️⃣ Abre los ajustes de tu cuenta Amazon tocando abajo.\n"
+        "3️⃣ En *'Direcciones autorizadas para documentos personales'*, añade el correo copiado.\n\n"
+        "✅ ¡Listo! Ya podrás recibir cualquier libro con 1 toque."
     )
     keyboard = [
         [
@@ -256,7 +243,7 @@ def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardButton("🔗 Abrir Amazon.com (Internacional)", url="https://www.amazon.com/hz/mycd/myx#/home/settings/payment")
         ],
         [
-            InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")
+            InlineKeyboardButton("⬅️ Volver", callback_data="menu:profile")
         ]
     ]
     return text, InlineKeyboardMarkup(keyboard)
@@ -418,24 +405,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kindle_email = user_data.get("kindle_email")
 
     if kindle_email:
-        status_line = f"🎯 *Kindle vinculado:* `{kindle_email}`\n\n"
+        status_line = f"📱 *Kindle vinculado:* `{kindle_email}`\n\n"
     else:
-        status_line = "📖 _Descarga cualquier libro en EPUB y recíbelo en tu Kindle._\n\n"
+        status_line = "📖 _Descarga libros en EPUB para móvil, tablet, PC o Kindle._\n\n"
 
     welcome_text = (
         f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
         f"{status_line}"
-        "✍️ *Escribe el título o autor* que quieras leer para empezar:"
+        "✍️ *Escribe el título o autor* que buscas para empezar:"
     )
 
     inline_keyboard = [
         [
-            InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search"),
+            InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
             InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
         ],
         [
-            InlineKeyboardButton("🎯 Configurar mi Kindle", callback_data="menu:kindle"),
-            InlineKeyboardButton("❓ Ayuda y Guía", callback_data="menu:guide")
+            InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile"),
+            InlineKeyboardButton("❓ Ayuda", callback_data="menu:guide")
         ]
     ]
 
