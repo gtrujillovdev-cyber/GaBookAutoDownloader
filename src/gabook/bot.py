@@ -1574,6 +1574,21 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
             return
     logger.error("Exception while handling an update:", exc_info=context.error)
 
+async def post_init_hook(app: Application) -> None:
+    """Sets the official public bot description and bio on Telegram."""
+    try:
+        desc = (
+            "📚 Tu biblioteca digital en Telegram. Busca y descarga cualquier libro en formato EPUB "
+            "para tu móvil, tablet o lector, o envíalo directamente a tu Kindle o correo con 1 toque."
+        )
+        short_desc = "📚 Busca y descarga libros en EPUB para tu móvil, tablet, PC o Kindle."
+        await app.bot.set_my_description(description=desc)
+        await app.bot.set_my_description(description=desc, language_code="es")
+        await app.bot.set_my_short_description(short_description=short_desc)
+        await app.bot.set_my_short_description(short_description=short_desc, language_code="es")
+    except Exception as e:
+        logger.warning(f"No se pudo sincronizar la descripción del bot en Telegram: {e}")
+
 def main():
     cleanup_downloads_dir()
     if PORT:
@@ -1584,7 +1599,7 @@ def main():
         return
 
     print("🚀 Iniciando GaBookAutoDownloaderBot (Family UX 2.0)...")
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init_hook).build()
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", guia_command))
