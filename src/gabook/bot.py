@@ -35,8 +35,10 @@ from gabook.config import (
     LANG_MAP,
     DOWNLOADS_DIR,
     SESSION_TTL_SECONDS,
-    MAX_ACTIVE_SESSIONS
+    MAX_ACTIVE_SESSIONS,
+    PORT
 )
+from gabook.services.health_server import start_health_server
 from gabook.services.book_client import (
     search_epubs,
     download_epub,
@@ -811,6 +813,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main():
     cleanup_downloads_dir()
+    if PORT:
+        start_health_server(PORT)
+
     if not TELEGRAM_BOT_TOKEN:
         print("❌ Error: TELEGRAM_BOT_TOKEN no configurado en .env")
         return

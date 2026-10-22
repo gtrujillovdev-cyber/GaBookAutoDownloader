@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: gabook-auto-downloader
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: KINDLE_EMAIL
+        sync: false
+      - key: KINDLE_EMAIL_PAPA
+        sync: false
+      - key: KINDLE_EMAIL_GONZALO
+        sync: false
+      - key: KINDLE_EMAIL_GABRIEL
+        sync: false

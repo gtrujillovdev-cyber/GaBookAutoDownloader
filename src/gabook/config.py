@@ -6,9 +6,10 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
-# Base paths
+# Base paths & Port
 DOWNLOADS_DIR = os.getenv("DOWNLOADS_DIR", str(PROJECT_ROOT / "downloads"))
 USERS_FILE = os.getenv("USERS_FILE", str(PROJECT_ROOT / "users.json"))
+PORT = int(os.getenv("PORT")) if os.getenv("PORT") and os.getenv("PORT").isdigit() else None
 
 # Credentials & Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")

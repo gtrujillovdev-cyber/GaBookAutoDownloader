@@ -27,6 +27,10 @@ from gabook.services.book_client import (
 )
 from gabook.services import user_manager
 
+from gabook.services.health_server import start_health_server
+import urllib.request
+import json
+
 class TestBotFeatures(unittest.TestCase):
     def test_topics_structure(self):
         """Verify that TOPICS has 24 categories and valid fields."""
@@ -122,6 +126,30 @@ class TestBotFeatures(unittest.TestCase):
         matching, others = search_epubs("Roma", max_results=5, target_lang="Spanish")
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["title"], "Historia de Roma")
+
+    def test_health_server_unit(self):
+        """Verify the health check HTTP server handler works hermetically."""
+        from gabook.services.health_server import HealthCheckHandler, start_health_server
+        import io
+
+        # 1. Without port or PORT env, should return None
+        with patch.dict(os.environ, {}, clear=True):
+            server = start_health_server(port=None)
+            self.assertIsNone(server)
+
+        # 2. Test HealthCheckHandler do_GET logic directly
+        handler = HealthCheckHandler.__new__(HealthCheckHandler)
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        handler.do_GET()
+
+        handler.send_response.assert_called_once_with(200)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload.get("status"), "healthy")
+        self.assertEqual(payload.get("service"), "GaBookAutoDownloader")
 
 if __name__ == "__main__":
     unittest.main()
