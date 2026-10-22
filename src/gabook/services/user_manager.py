@@ -168,12 +168,32 @@ def set_kindle_free_space(user_id: int, free_mb: float) -> bool:
     save_users(users)
     return True
 
-def record_book_sent(user_id: int, size_bytes: int, is_kindle: bool = True) -> dict:
-    """Updates user stats and accumulates Kindle storage consumption."""
+def record_book_sent(
+    user_id: int,
+    size_bytes: int,
+    is_kindle: bool = True,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    destination: str = "Kindle"
+) -> dict:
+    """Updates user stats, reading history, and accumulates Kindle storage consumption."""
     users = load_users()
     key = str(user_id)
     if key not in users:
-        return {}
+        default_model = KINDLE_MODELS.get(DEFAULT_KINDLE_MODEL_KEY, {})
+        users[key] = {
+            "kindle_email": None,
+            "personal_email": None,
+            "lang": "Spanish",
+            "name": None,
+            "kindle_model_key": DEFAULT_KINDLE_MODEL_KEY,
+            "kindle_model": default_model.get("label", "Kindle Básico (8 GB)"),
+            "storage_total_mb": DEFAULT_STORAGE_TOTAL_MB,
+            "storage_used_mb": 0.0,
+            "books_sent_count": 0,
+            "history": [],
+            "created_at": datetime.now().isoformat()
+        }
 
     user = users[key]
     user["books_sent_count"] = int(user.get("books_sent_count", 0)) + 1
@@ -183,8 +203,26 @@ def record_book_sent(user_id: int, size_bytes: int, is_kindle: bool = True) -> d
         total_mb = float(user.get("storage_total_mb", DEFAULT_STORAGE_TOTAL_MB))
         user["storage_used_mb"] = min(total_mb, current_used + size_mb)
 
+    if title:
+        history = user.get("history", [])
+        entry = {
+            "title": title[:45],
+            "author": author[:35] if author else "Autor desconocido",
+            "destination": destination,
+            "sent_at": datetime.now().strftime("%d/%m %H:%M")
+        }
+        history = [h for h in history if h.get("title") != entry["title"]]
+        history.insert(0, entry)
+        user["history"] = history[:5]
+
     save_users(users)
     return get_kindle_storage_info(user_id)
+
+def get_user_history(user_id: int) -> list:
+    """Retrieves the last 5 sent books for a user."""
+    users = load_users()
+    key = str(user_id)
+    return users.get(key, {}).get("history", [])
 
 def get_kindle_storage_info(user_id: int) -> dict:
     """

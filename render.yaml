@@ -24,3 +24,5 @@ services:
         sync: false
       - key: KINDLE_EMAIL_GABRIEL
         sync: false
+      - key: GROQ_API_KEY
+        sync: false

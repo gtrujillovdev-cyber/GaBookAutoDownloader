@@ -14,7 +14,7 @@ from telegram import (
     KeyboardButton,
     LinkPreviewOptions
 )
-from telegram.constants import ParseMode
+from telegram.constants import ParseMode, ChatAction
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -44,7 +44,8 @@ from gabook.services.book_client import (
     search_epubs,
     download_epub,
     parse_query_and_language,
-    get_book_cover
+    get_book_cover,
+    get_book_synopsis
 )
 from gabook.services.kindle_mailer import send_to_kindle
 from gabook.services.gmail_monitor import monitor_kindle_delivery
@@ -56,6 +57,7 @@ from gabook.services.user_manager import (
     set_kindle_free_space,
     record_book_sent,
     get_kindle_storage_info,
+    get_user_history,
     set_user_lang
 )
 
@@ -175,11 +177,42 @@ def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardButton("🎛️ Calibrar Espacio", callback_data="menu:calibrate_storage")
         ],
         [
-            InlineKeyboardButton("🌐 Cambiar Idioma", callback_data="menu:lang"),
+            InlineKeyboardButton("📚 Mis Libros Recientes", callback_data="menu:history"),
+            InlineKeyboardButton("🌐 Cambiar Idioma", callback_data="menu:lang")
+        ],
+        [
             InlineKeyboardButton("❌ Cerrar", callback_data="cancel_menu")
         ]
     ]
 
+    return text, InlineKeyboardMarkup(keyboard)
+
+def build_history_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
+    """Generates the recent readings list with 1-tap re-search buttons."""
+    history = get_user_history(user_id)
+    if not history:
+        text = (
+            "📚 *HISTORIAL DE LECTURAS*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Aún no has solicitado libros. Tus libros enviados aparecerán aquí para que puedas "
+            "volver a consultarlos o reenviarlos con 1 toque."
+        )
+        keyboard = [[InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")]]
+        return text, InlineKeyboardMarkup(keyboard)
+
+    text = (
+        "📚 *MIS LIBROS RECIENTES*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Aquí tienes tus últimas solicitudes. Toca cualquiera para buscarlo o reenviarlo:\n"
+    )
+
+    keyboard = []
+    for h in history:
+        dest_icon = "📱" if h.get("destination") == "Kindle" else ("📥" if h.get("destination") == "Telegram" else "✉️")
+        btn_text = f"📖 {h['title'][:25]} ({dest_icon} {h.get('sent_at', '')})"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"hist_search:{h['title'][:30]}")])
+
+    keyboard.append([InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")])
     return text, InlineKeyboardMarkup(keyboard)
 
 def build_models_markup() -> InlineKeyboardMarkup:
@@ -447,11 +480,22 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_
     user_data = get_user_data(user_id)
     default_lang = user_data.get("lang", "Spanish")
 
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    if chat_id:
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        except Exception:
+            pass
+
     clean_query, target_lang = parse_query_and_language(raw_query, default_lang=default_lang)
     lang_display = target_lang if target_lang else "Todos"
     label = display_name or clean_query
 
-    status_msg = await update.message.reply_text(
+    target_sender = update.message if update.message else (update.callback_query.message if update.callback_query else None)
+    if not target_sender:
+        return
+
+    status_msg = await target_sender.reply_text(
         f"🔍 *Buscando:* _{escape_md(label)}_\n"
         f"🌐 *Idioma:* `{lang_display}`\n"
         f"_Buscando opciones en formato EPUB..._",
@@ -624,6 +668,73 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # Treat any other text as an automatic book search query
     await handle_search(update, context, query)
 
+async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles audio voice notes from users and transcribes or guides them seamlessly."""
+    user = update.effective_user
+    logger.info(f"🎙️ Mensaje de voz recibido de {user.first_name} (ID: {user.id})")
+
+    groq_key = os.getenv("GROQ_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    if not groq_key and not openai_key:
+        await update.message.reply_text(
+            f"🎙️ *¡Hola {user.first_name}! He recibido tu nota de voz.*\n\n"
+            "💡 Para activar la transcripción automática por voz puedes añadir tu clave gratuita de Groq o Whisper en la configuración de la nube (`GROQ_API_KEY`).\n\n"
+            "✍️ *Por ahora, por favor escribe el nombre del libro o autor que buscas aquí abajo:*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_KEYBOARD
+        )
+        return
+
+    status_msg = await update.message.reply_text("🎙️ _Escuchando tu audio y transcribiendo el título..._", parse_mode=ParseMode.MARKDOWN)
+    voice_file = await context.bot.get_file(update.message.voice.file_id)
+    temp_ogg = os.path.join(DOWNLOADS_DIR, f"voice_{uuid.uuid4().hex[:6]}.ogg")
+    try:
+        await voice_file.download_to_drive(temp_ogg)
+        transcribed_text = None
+
+        if groq_key:
+            import requests
+            with open(temp_ogg, "rb") as f:
+                r = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {groq_key}"},
+                    files={"file": (os.path.basename(temp_ogg), f, "audio/ogg")},
+                    data={"model": "whisper-large-v3-turbo", "language": "es"},
+                    timeout=12
+                )
+                if r.status_code == 200:
+                    transcribed_text = r.json().get("text", "").strip()
+        elif openai_key:
+            import requests
+            with open(temp_ogg, "rb") as f:
+                r = requests.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    files={"file": (os.path.basename(temp_ogg), f, "audio/ogg")},
+                    data={"model": "whisper-1", "language": "es"},
+                    timeout=15
+                )
+                if r.status_code == 200:
+                    transcribed_text = r.json().get("text", "").strip()
+
+        if transcribed_text:
+            clean_search = re.sub(r'^(busca|búscame|quiero leer|descarga|ponme|libro)\s+', '', transcribed_text, flags=re.IGNORECASE).strip()
+            clean_search = clean_search.strip('."\'')
+            await status_msg.edit_text(f"🎙️ *Transcripción:* _{escape_md(clean_search)}_\n_Iniciando búsqueda..._", parse_mode=ParseMode.MARKDOWN)
+            await handle_search(update, context, clean_search)
+        else:
+            await status_msg.edit_text("⚠️ No pude entender claramente el audio. Por favor escribe el título o autor con el teclado.")
+    except Exception as e:
+        logger.error(f"Error procesando voz: {e}")
+        await status_msg.edit_text("⚠️ Ocurrió un error al procesar el audio. Por favor escribe el título con el teclado.")
+    finally:
+        if os.path.exists(temp_ogg):
+            try:
+                os.remove(temp_ogg)
+            except OSError:
+                pass
+
 async def execute_book_send(
     target_msg,
     user_id: int,
@@ -684,44 +795,94 @@ async def execute_book_send(
             )
             return
 
-        # Step 2: Send
-        await target_msg.edit_text(
-            f"⏳ *[2/{total_steps}] Enviando a {dest_label}...*\n\n"
-            f"📖 *{title_md}*\n"
-            f"📧 Destino: `{target_email}`",
-            parse_mode=ParseMode.MARKDOWN
-        )
-
-        sent = await loop.run_in_executor(None, send_to_kindle, filepath, book_title, target_email)
-
-        if not sent:
+        if target_email == "telegram":
+            # Direct Telegram document upload
             await target_msg.edit_text(
-                "❌ *Error en el envío*: No se pudo enviar el correo.\n"
-                "Verifica la configuración del servidor de correo.",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-
-        # Record storage consumption & telemetry
-        record_book_sent(user_id, file_size, is_kindle=is_kindle)
-
-        if is_kindle:
-            # Step 3: Monitor Gmail for Amazon confirmation
-            await target_msg.edit_text(
-                f"⏳ *[3/3] Correo enviado. Verificando confirmación de Amazon en Gmail...*\n\n"
+                f"⏳ *[2/2] Subiendo EPUB directamente a Telegram...*\n\n"
                 f"📖 *{title_md}*\n"
-                "_Comprobando si Amazon solicita verificación o aprueba la entrega..._",
+                f"✍️ _{author_md}_",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            chat_id = target_msg.chat_id
+            try:
+                await target_msg.get_bot().send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
+            except Exception:
+                pass
+
+            clean_display_name = clean_filename(book_title) or "libro"
+            with open(filepath, "rb") as doc_f:
+                await target_msg.get_bot().send_document(
+                    chat_id=chat_id,
+                    document=doc_f,
+                    filename=f"{clean_display_name}.epub",
+                    caption=f"📖 *{title_md}*\n✍️ _{author_md}_\n📦 EPUB ({escape_md(selected_book['size'])})",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+
+            record_book_sent(
+                user_id,
+                file_size,
+                is_kindle=False,
+                title=book_title,
+                author=book_author,
+                destination="Telegram"
+            )
+
+            status_icon = "🎉"
+            status_desc = "Libro subido con éxito y listo para leer en Telegram."
+            next_tip = "💡 *¡Listo para leer!* Toca el archivo adjunto para abrirlo en Apple Books, Kindle App o tu lector habitual."
+
+        else:
+            # Step 2: Send via SMTP
+            await target_msg.edit_text(
+                f"⏳ *[2/{total_steps}] Enviando a {dest_label}...*\n\n"
+                f"📖 *{title_md}*\n"
+                f"📧 Destino: `{target_email}`",
                 parse_mode=ParseMode.MARKDOWN
             )
 
-            verify_result = await loop.run_in_executor(None, monitor_kindle_delivery, 60, 5)
-            status_icon = "🎉" if verify_result["status"] in ["verified_auto", "delivered_silent"] else "⚠️"
-            status_desc = escape_md(verify_result['message'])
-            next_tip = "💡 *Próximo paso:* Enciende el Wi-Fi de tu Kindle para que se sincronice automáticamente."
-        else:
-            status_icon = "🎉"
-            status_desc = "Libro enviado con éxito a tu bandeja de entrada."
-            next_tip = "💡 *Próximo paso:* Abre tu correo electrónico para descargar o leer tu archivo EPUB."
+            sent = await loop.run_in_executor(None, send_to_kindle, filepath, book_title, target_email)
+
+            if not sent:
+                await target_msg.edit_text(
+                    "❌ *Error en el envío*: No se pudo enviar el correo.\n"
+                    "Verifica la configuración del servidor de correo.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+
+            dest_type = "Kindle" if is_kindle else "Correo"
+            record_book_sent(
+                user_id,
+                file_size,
+                is_kindle=is_kindle,
+                title=book_title,
+                author=book_author,
+                destination=dest_type
+            )
+
+            if is_kindle:
+                # Step 3: Monitor Gmail for Amazon confirmation
+                await target_msg.edit_text(
+                    f"⏳ *[3/3] Correo enviado. Verificando confirmación de Amazon en Gmail...*\n\n"
+                    f"📖 *{title_md}*\n"
+                    "_Comprobando si Amazon solicita verificación o aprueba la entrega..._",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+
+                verify_result = await loop.run_in_executor(None, monitor_kindle_delivery, 60, 5)
+                status_icon = "🎉" if verify_result["status"] in ["verified_auto", "delivered_silent"] else "⚠️"
+                status_desc = escape_md(verify_result['message'])
+                next_tip = (
+                    "💡 *Pasos en tu Kindle:*\n"
+                    "• Activa Wi-Fi y pulsa *Sincronizar*.\n"
+                    "• En la Biblioteca, asegúrate de ver la pestaña *'Documentos'* o *'Todos'* (en los modelos modernos los envíos no aparecen en 'Libros').\n"
+                    "• Si no aparece, comprueba si Amazon te envió un correo para autorizar/verificar la entrega."
+                )
+            else:
+                status_icon = "🎉"
+                status_desc = "Libro enviado con éxito a tu bandeja de entrada."
+                next_tip = "💡 *Próximo paso:* Abre tu correo electrónico para descargar o leer tu archivo EPUB."
 
         storage_info = get_kindle_storage_info(user_id)
         storage_footer = f"\n📦 *Espacio restante en Kindle:* `{storage_info['progress_bar']}` {storage_info['free_display']} libres" if is_kindle else ""
@@ -740,11 +901,16 @@ async def execute_book_send(
             "Escribe su nombre o toca un botón de abajo:"
         )
 
+        clean_author = selected_book.get("author", "").strip()
         final_keyboard = [
             [InlineKeyboardButton("🔍 Buscar otro libro", callback_data="action:new_search")],
-            [InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")],
-            [InlineKeyboardButton("👤 Ver mi Perfil / Kindle", callback_data="menu:profile")]
         ]
+        if clean_author and clean_author.lower() not in ["autor desconocido", "desconocido", "anonymous", "varios"]:
+            short_author = clean_author[:20]
+            final_keyboard.append([InlineKeyboardButton(f"✍️ Más de {short_author}", callback_data=f"more_author:{session_id}:{idx}")])
+
+        final_keyboard.append([InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")])
+        final_keyboard.append([InlineKeyboardButton("👤 Ver mi Perfil / Historial", callback_data="menu:profile")])
 
         await target_msg.edit_text(final_message, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(final_keyboard))
 
@@ -931,6 +1097,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data == "menu:history":
+        text, reply_markup = build_history_markup(user_id)
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data.startswith("hist_search:"):
+        q_text = data.split(":", 1)[1]
+        await handle_search(update, context, q_text)
+        return
+
+    if data.startswith("more_author:"):
+        _, session_id, idx_str = data.split(":")
+        idx = int(idx_str)
+        session = SEARCH_SESSIONS.get(session_id)
+        if session and idx < len(session["books"]):
+            author_to_search = session["books"][idx].get("author", "")
+            if author_to_search:
+                await handle_search(update, context, author_to_search)
+                return
+
     # Handle preset Kindle selector
     if data.startswith("preset:"):
         key = data.split(":")[1]
@@ -1042,6 +1228,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if storage_info["is_low"] or storage_info["free_mb"] < book_size_mb:
             low_space_alert = f"\n⚠️ *Aviso de almacenamiento:* Te quedan solo {storage_info['free_display']} en tu Kindle.\n"
 
+        # Fetch book cover and synopsis concurrently
+        loop = asyncio.get_running_loop()
+        cover_future = loop.run_in_executor(None, get_book_cover, b['title'], b['author'])
+        synopsis_future = loop.run_in_executor(None, get_book_synopsis, b['title'], b['author'])
+        cover_url, synopsis = await asyncio.gather(cover_future, synopsis_future)
+
+        synopsis_block = f"📝 *Sinopsis:* _{escape_md(synopsis)}_\n\n" if synopsis else ""
+
         preview_text = (
             "📖 *PREVISUALIZACIÓN DEL LIBRO*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1050,6 +1244,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🌐 *Idioma:* {escape_md(b['lang'])}\n"
             f"📅 *Año:* {escape_md(year_str)}\n"
             f"📦 *Formato:* EPUB ({escape_md(b['size'])})\n\n"
+            f"{synopsis_block}"
             f"🎯 *Kindle:* `{kindle_email}`\n"
             f"✉️ *Correo personal:* `{personal_email or 'No configurado'}`\n"
             f"📊 *Espacio Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*{low_space_alert}\n"
@@ -1057,12 +1252,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         preview_keyboard = [
-            [InlineKeyboardButton("🚀 Enviar a mi Kindle", callback_data=f"send_choice:{session_id}:{idx}:kindle")]
+            [InlineKeyboardButton("🚀 Enviar a mi Kindle", callback_data=f"send_choice:{session_id}:{idx}:kindle")],
+            [InlineKeyboardButton("📥 Descargar aquí en Telegram", callback_data=f"send_choice:{session_id}:{idx}:telegram")]
         ]
 
         if personal_email:
             preview_keyboard.append([
-                InlineKeyboardButton(f"✉️ Enviar a mi Correo ({personal_email})", callback_data=f"send_choice:{session_id}:{idx}:personal")
+                InlineKeyboardButton(f"✉️ Enviar a mi Correo ({personal_email[:20]}…)", callback_data=f"send_choice:{session_id}:{idx}:personal")
             ])
         else:
             preview_keyboard.append([
@@ -1072,10 +1268,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         preview_keyboard.append([InlineKeyboardButton("✏️ Enviar a otro correo...", callback_data=f"send_choice:{session_id}:{idx}:custom")])
         preview_keyboard.append([InlineKeyboardButton("⬅️ Ver otras versiones", callback_data=f"back:{session_id}")])
         preview_keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")])
-
-        # Fetch book cover in background
-        loop = asyncio.get_running_loop()
-        cover_url = await loop.run_in_executor(None, get_book_cover, b['title'], b['author'])
 
         link_preview = None
         if cover_url:
@@ -1108,6 +1300,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = get_user_data(user_id)
         storage_info = get_kindle_storage_info(user_id)
         book_size_mb = parse_size_to_mb(b.get('size'))
+
+        if dest == "telegram":
+            await execute_book_send(query.message, user_id, session_id, idx, target_email="telegram", is_kindle=False)
+            return
 
         if dest == "kindle":
             kindle_email = user_data.get("kindle_email")
@@ -1255,6 +1451,7 @@ def main():
     application.add_handler(CommandHandler("idioma", idioma_command))
     application.add_handler(CommandHandler("buscar", buscar_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+    application.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_error_handler(error_handler)
 

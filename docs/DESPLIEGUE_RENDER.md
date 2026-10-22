@@ -54,6 +54,7 @@ En la misma pantalla (o en la pestaña **Environment** de tu servicio en Render)
 | `KINDLE_EMAIL_PAPA` | *Correo Kindle de Papá* |
 | `KINDLE_EMAIL_GONZALO` | *Correo Kindle de Gonzalo* |
 | `KINDLE_EMAIL_GABRIEL` | *Tu correo Kindle personal* |
+| `GROQ_API_KEY` | *(Opcional)* Clave gratuita de Groq para transcribir audios de voz |
 | `PYTHONUNBUFFERED` | `1` |
 
 > ⚠️ **Importante:** Render asigna automáticamente la variable `PORT`. El bot detectará este puerto y levantará el servidor de salud HTTP en segundo plano.

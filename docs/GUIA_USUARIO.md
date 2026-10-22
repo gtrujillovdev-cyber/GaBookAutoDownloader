@@ -24,7 +24,7 @@ Para que Amazon permita que el bot meta libros en tu dispositivo Kindle, cada le
 
 ## 🔍 Paso 2: Cómo pedir libros
 
-Tienes dos formas muy sencillas de elegir tu próxima lectura:
+Tienes tres formas muy sencillas de elegir tu próxima lectura:
 
 ### Opción A: Escribe directamente el libro o autor
 Simplemente escribe en el chat lo que quieras leer, tal como hablarías con una persona:
@@ -38,49 +38,37 @@ Simplemente escribe en el chat lo que quieras leer, tal como hablarías con una 
 ### Opción B: Toca el botón "Explorar por Temas" 📚
 Si no tienes un título pensado y te apetece descubrir libros de un género:
 1. Toca el botón **`📚 Explorar por Temas`** en la parte inferior de tu pantalla.
-2. Navega entre las 3 páginas con **`[ Siguiente ➡️ ]`** y elige tu temática favorita entre los **24 géneros disponibles**:
-   * 🏺 *Arqueología y Civilizaciones Antiguas* (Egipto, Roma, Grecia, grandes descubrimientos)
-   * 🦴 *Antropología y Evolución Humana* (orígenes, culturas del mundo)
-   * 🏛️ *Arquitectura, Urbanismo y Diseño*
-   * ⚔️ *Novela Histórica Épica*
-   * 📜 *Historia y Crónicas de España*
-   * 🪖 *Ficción Bélica y Militar*
-   * 🕵️ *Espionaje y Guerra Fría*
-   * 🌐 *Geopolítica y Estrategia*
-   * 🔍 *Novela Negra y Policiaca*
-   * 🕵️‍♂️ *Mafia, Crimen Organizado y Crónica Real*
-   * 🧭 *Grandes Viajes y Exploración* (Polo Sur, expediciones, navegantes)
-   * 🤔 *Filosofía y Grandes Pensadores* (Estoicismo, clásicos, ética)
-   * 👤 *Biografías y Memorias*
-   * 🔬 *Divulgación Científica y Tecnología*
-   * 📖 *Grandes Clásicos de la Literatura*
-   * ... y muchos más.
-3. El bot te mostrará los mejores libros en español de esa categoría.
+2. Navega entre las 3 páginas con **`[ Siguiente ➡️ ]`** y elige tu temática favorita entre los **24 géneros disponibles**.
+
+### Opción C: Envía una Nota de Voz 🎙️
+Pulsa el botón del micrófono en Telegram y di en voz alta el nombre del libro o autor que buscas (ej. *"Búscame Los Pilares de la Tierra"*).
 
 ---
 
-## 🖼️ Paso 3: Previsualización y Envío (Kindle o Correo Personal)
+## 🖼️ Paso 3: Previsualización, Sinopsis y Opciones de Entrega
 
 1. En la lista de resultados, toca el libro que más te llame la atención.
-2. Se abrirá la **Ficha del Libro con su Portada oficial**:
-   * Podrás ver la foto de la portada, el título completo, autor, año, idioma, tamaño del archivo y el **estado de almacenamiento de tu Kindle** (`[■■■□□□□□□□] 30%`).
+2. Se abrirá la **Ficha del Libro**:
+   * **Foto de portada oficial**
+   * **Sinopsis breve** del argumento
+   * Autor, año, idioma, tamaño y estado de almacenamiento de tu Kindle.
 3. Elige cómo prefieres recibirlo:
    * 👉 **`[ 🚀 Enviar a mi Kindle ]`**: Se enviará y sincronizará en tu lector automáticamente.
-   * 👉 **`[ ✉️ Enviar a mi Correo Personal ]`**: Se enviará de inmediato en formato EPUB a tu bandeja de correo habitual (ideal para leer en móvil, tablet o PC).
-   * 👉 **`[ ✏️ Enviar a otro correo... ]`**: Te permite escribir cualquier correo al vuelo (ej. para regalárselo a un amigo o familiar).
+   * 👉 **`[ 📥 Descargar aquí en Telegram ]`**: El bot te envía el archivo `.epub` directamente en el chat para abrirlo de inmediato en tu móvil, tablet o PC.
+   * 👉 **`[ ✉️ Enviar a mi Correo Personal ]`**: Se enviará a tu bandeja de correo habitual.
+   * 👉 **`[ ✏️ Enviar a otro correo... ]`**: Te permite escribir cualquier correo al vuelo (ej. para regalárselo a un amigo).
 
 ### ⚠️ Alerta de Almacenamiento en Kindle
 Si a tu Kindle le queda poco espacio libre (menos de 300 MB o menos que el tamaño del libro), el bot te avisará automáticamente:
-> *"⚠️ ¡Atención! Tu Kindle tiene poco espacio restante. ¿Deseas enviarlo a tu correo normal en su lugar?"*
-
-Podrás enviarlo al correo normal con 1 toque o forzar el envío al Kindle si lo prefieres.
+> *"⚠️ ¡Atención! Tu Kindle tiene poco espacio restante. ¿Deseas enviarlo a tu correo normal o descargarlo en Telegram en su lugar?"*
 
 ---
 
-## 📱 Paso 4: Ajustar tu Modelo de Kindle y Espacio Libre
+## 📱 Paso 4: Ajustar tu Modelo de Kindle, Espacio e Historial
 
 Desde el botón inferior **`🎯 Mi Kindle`** podrás:
 * **Ver tu espacio restante:** Barra de uso visual y megabytes disponibles.
+* **Mis Libros Recientes:** Consultar tus últimas lecturas y reenviarlas con 1 toque.
 * **Seleccionar tu modelo:** Elegir entre Kindle Básico (8 GB), Paperwhite (16 GB), Signature (32 GB), Scribe o modelos anteriores.
 * **Calibrar espacio:** Indicar con 1 toque cuánto espacio libre tiene tu Kindle físico.
 * **Configurar tu correo personal:** Para recibir libros directamente por email.

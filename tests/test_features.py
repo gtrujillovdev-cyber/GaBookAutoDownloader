@@ -223,5 +223,51 @@ class TestBotFeatures(unittest.TestCase):
             if os.path.exists(tf_path):
                 os.remove(tf_path)
 
+    @patch("requests.get")
+    def test_get_book_synopsis(self, mock_get):
+        """Verify get_book_synopsis extracts first sentence cleanly."""
+        from gabook.services.book_client import get_book_synopsis
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "docs": [{
+                "first_sentence": "En un lugar de la Mancha de cuyo nombre no quiero acordarme."
+            }]
+        }
+        mock_get.return_value = mock_resp
+
+        synopsis = get_book_synopsis("Don Quijote", "Cervantes")
+        self.assertIn("En un lugar de la Mancha", synopsis)
+
+    def test_user_history_tracking(self):
+        """Verify user history saves and caps at 5 books."""
+        from gabook.bot import build_history_markup
+        test_uid = 777666555
+
+        # Record 6 books
+        for i in range(6):
+            user_manager.record_book_sent(
+                test_uid,
+                size_bytes=1024 * 1024,
+                is_kindle=True,
+                title=f"Libro {i}",
+                author=f"Autor {i}",
+                destination="Kindle"
+            )
+
+        history = user_manager.get_user_history(test_uid)
+        self.assertEqual(len(history), 5, "History should keep max 5 recent books")
+        self.assertEqual(history[0]["title"], "Libro 5", "Most recent should be first")
+
+        text, markup = build_history_markup(test_uid)
+        self.assertIn("MIS LIBROS RECIENTES", text)
+        self.assertEqual(len(markup.inline_keyboard), 6)  # 5 books + back button
+
+        # Cleanup
+        users = user_manager.load_users()
+        users.pop(str(test_uid), None)
+        user_manager.save_users(users)
+
 if __name__ == "__main__":
     unittest.main()

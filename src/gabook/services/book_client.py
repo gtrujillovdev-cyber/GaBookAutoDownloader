@@ -30,6 +30,41 @@ def get_book_cover(title: str, author: str = "") -> Optional[str]:
         pass
     return None
 
+def get_book_synopsis(title: str, author: str = "") -> Optional[str]:
+    """Retrieves a brief synopsis or first sentence from OpenLibrary."""
+    try:
+        clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', title).strip()[:40]
+        q = f"{clean_t} {author}".strip()
+        url = f"https://openlibrary.org/search.json?q={requests.utils.quote(q)}&limit=1"
+        r = requests.get(url, timeout=3)
+        if r.status_code == 200:
+            docs = r.json().get("docs", [])
+            if docs:
+                doc = docs[0]
+                first_sent = doc.get("first_sentence")
+                if first_sent:
+                    raw_text = first_sent.get("value", "") if isinstance(first_sent, dict) else (first_sent[0] if isinstance(first_sent, list) else str(first_sent))
+                    if raw_text:
+                        clean_text = re.sub(r'[*_`\[\]<>]', '', raw_text).strip()
+                        return clean_text[:200] + ("…" if len(clean_text) > 200 else "")
+
+                work_key = doc.get("key")
+                if work_key:
+                    w_resp = requests.get(f"https://openlibrary.org{work_key}.json", timeout=2.5)
+                    if w_resp.status_code == 200:
+                        desc = w_resp.json().get("description")
+                        raw_desc = desc.get("value", "") if isinstance(desc, dict) else str(desc or "")
+                        if raw_desc:
+                            clean_desc = re.sub(r'[*_`\[\]<>]', '', raw_desc).strip()
+                            sentences = re.split(r'(?<=[.!?])\s+', clean_desc)
+                            short_desc = " ".join(sentences[:2]).strip()
+                            if len(short_desc) > 200:
+                                short_desc = short_desc[:197] + "…"
+                            return short_desc
+    except Exception:
+        pass
+    return None
+
 def parse_query_and_language(raw_text: str, default_lang: Optional[str] = "Spanish") -> Tuple[str, Optional[str]]:
     """Parses natural language queries to detect requested language and cleans prefixes."""
     text = raw_text.strip()
