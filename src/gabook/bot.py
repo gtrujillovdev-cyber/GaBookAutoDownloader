@@ -28,6 +28,7 @@ from telegram.ext import (
 from gabook.config import (
     TELEGRAM_BOT_TOKEN,
     GMAIL_SENDER,
+    DEFAULT_KINDLE_EMAIL,
     PAGE_SIZE,
     TOPICS,
     TOPICS_PAGE_SIZE,
@@ -45,7 +46,8 @@ from gabook.services.book_client import (
     download_epub,
     parse_query_and_language,
     get_book_cover,
-    get_book_synopsis
+    get_book_synopsis,
+    clean_filename
 )
 from gabook.services.kindle_mailer import send_to_kindle
 from gabook.services.gmail_monitor import monitor_kindle_delivery
@@ -94,8 +96,10 @@ def cleanup_expired_sessions():
         for sid in sorted_sids[:(len(SEARCH_SESSIONS) - MAX_ACTIVE_SESSIONS)]:
             SEARCH_SESSIONS.pop(sid, None)
 
-def is_valid_email(email_str: str) -> bool:
+def is_valid_email(email_str: Optional[str]) -> bool:
     """Basic email format validator."""
+    if not email_str or not isinstance(email_str, str):
+        return False
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_str.strip()))
 
 def parse_size_to_mb(size_str: Optional[str]) -> float:
@@ -115,8 +119,10 @@ def parse_size_to_mb(size_str: Optional[str]) -> float:
     except Exception:
         return 1.5
 
-def parse_storage_text_to_mb(text: str) -> Optional[float]:
+def parse_storage_text_to_mb(text: Optional[str]) -> Optional[float]:
     """Parses user input string into megabytes (e.g., '500 MB', '2.5 GB')."""
+    if not text or not isinstance(text, str):
+        return None
     t = text.strip().lower()
     m = re.search(r'([0-9]+(?:[\.,][0-9]+)?)', t)
     if not m:
@@ -1427,6 +1433,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if author_to_search:
                 await handle_search(update, context, author_to_search)
                 return
+        else:
+            await query.edit_message_text("⚠️ La sesión de búsqueda ha caducado. Vuelve a escribir el autor.")
+            return
 
     # Handle preset Kindle selector
     if data.startswith("preset:"):

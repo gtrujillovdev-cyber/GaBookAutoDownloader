@@ -10,9 +10,11 @@ from gabook.config import HEADERS, LANG_MAP, DOWNLOADS_DIR
 
 logger = logging.getLogger(__name__)
 
-def clean_filename(name: str) -> str:
+def clean_filename(name: Optional[str]) -> str:
     """Sanitize string to be safe as a filename."""
-    return re.sub(r'[\/*?:"<>|]', "", name).strip()
+    if not name:
+        return ""
+    return re.sub(r'[\/*?:"<>|]', "", str(name)).strip()
 
 def get_book_cover(title: str, author: str = "") -> Optional[str]:
     """Retrieves book cover image URL from OpenLibrary."""

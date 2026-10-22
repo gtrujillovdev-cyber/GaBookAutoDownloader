@@ -1,8 +1,9 @@
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # Add src to sys.path so tests can run cleanly from any directory
 SRC_DIR = Path(__file__).resolve().parent.parent / "src"
@@ -382,6 +383,368 @@ class TestBotFeatures(unittest.TestCase):
         args, kwargs = mock_message.reply_text.call_args
         self.assertIn("¡Hola Gabriel! Bienvenido a GaBook", args[0])
         self.assertEqual(kwargs.get("reply_markup"), MAIN_KEYBOARD)
+
+    def test_telegram_direct_download_execution(self):
+        """Verify that direct Telegram download pipeline runs smoothly, cleans filenames, uploads document, and deletes temp file."""
+        import asyncio
+        import tempfile
+        from gabook.bot import execute_book_send, SEARCH_SESSIONS
+
+        test_sid = "test_tg_session"
+        SEARCH_SESSIONS[test_sid] = {
+            "books": [{
+                "title": "El Señor de los Anillos: La Comunidad",
+                "author": "J.R.R. Tolkien",
+                "size": "2.5 MB",
+                "lang": "Spanish"
+            }],
+            "created_at": time.time()
+        }
+
+        # Create real temp file to simulate downloaded epub
+        with tempfile.NamedTemporaryFile("wb", suffix=".epub", delete=False) as tf:
+            tf.write(b"dummy epub data" * 100)
+            tf_path = tf.name
+
+        mock_bot = MagicMock()
+        mock_bot.send_chat_action = AsyncMock()
+        mock_bot.send_document = AsyncMock()
+
+        mock_target_msg = MagicMock()
+        mock_target_msg.chat_id = 12345
+        mock_target_msg.edit_text = AsyncMock()
+        mock_target_msg.get_bot.return_value = mock_bot
+
+        try:
+            with patch("gabook.bot.download_epub", return_value=tf_path):
+                asyncio.run(execute_book_send(
+                    mock_target_msg,
+                    user_id=888888,
+                    session_id=test_sid,
+                    idx=0,
+                    target_email="telegram",
+                    is_kindle=False
+                ))
+
+            # Verify send_document was called with cleaned filename
+            self.assertTrue(mock_bot.send_document.called)
+            doc_kwargs = mock_bot.send_document.call_args[1]
+            self.assertEqual(doc_kwargs["filename"], "El Señor de los Anillos La Comunidad.epub")
+            self.assertIn("El Señor de los Anillos", doc_kwargs["caption"])
+
+            # Verify temp file was removed
+            self.assertFalse(os.path.exists(tf_path), "Downloaded EPUB was not cleaned up!")
+
+            # Verify completion message
+            final_edit_args = mock_target_msg.edit_text.call_args[0][0]
+            self.assertIn("¡Operación completada!", final_edit_args)
+            self.assertIn("Libro subido con éxito y listo para leer en Telegram", final_edit_args)
+
+        finally:
+            SEARCH_SESSIONS.pop(test_sid, None)
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    def test_send_confirmed_fallback_kindle_email(self):
+        """Verify send_confirmed callback resolves DEFAULT_KINDLE_EMAIL without NameError when profile has none."""
+        import asyncio
+        from gabook.bot import button_callback
+        from gabook.config import DEFAULT_KINDLE_EMAIL
+
+        mock_query = MagicMock()
+        mock_query.data = "send_confirmed:test_sid:0:kindle"
+        mock_query.answer = AsyncMock()
+        mock_query.message = MagicMock()
+        mock_query.message.edit_text = AsyncMock()
+
+        mock_user = MagicMock()
+        mock_user.id = 555444333
+        mock_user.first_name = "UserWithoutKindle"
+
+        mock_update = MagicMock()
+        mock_update.callback_query = mock_query
+        mock_update.effective_user = mock_user
+
+        mock_context = MagicMock()
+
+        with patch("gabook.bot.get_user_data", return_value={"kindle_email": None}), \
+             patch("gabook.bot.execute_book_send", new_callable=AsyncMock) as mock_send:
+            asyncio.run(button_callback(mock_update, mock_context))
+            self.assertTrue(mock_send.called)
+            self.assertEqual(mock_send.call_args[1]["target_email"], DEFAULT_KINDLE_EMAIL)
+
+    def test_expired_session_callbacks(self):
+        """Verify that clicking callbacks on expired sessions responds cleanly without unhandled crashes."""
+        import asyncio
+        from gabook.bot import button_callback, execute_book_send
+
+        # Test execute_book_send with expired session
+        target_msg = MagicMock()
+        target_msg.edit_text = AsyncMock()
+        asyncio.run(execute_book_send(target_msg, user_id=123, session_id="nonexistent_sess", idx=0, target_email="telegram", is_kindle=False))
+        target_msg.edit_text.assert_called_once_with("⚠️ La sesión de búsqueda ha caducado. Vuelve a escribir el título.")
+
+        # Test callbacks on expired session
+        test_actions = [
+            ("dl:nonexistent_sess:0", "⚠️ La sesión de búsqueda ha caducado"),
+            ("send_choice:nonexistent_sess:0:telegram", "⚠️ La sesión de búsqueda ha caducado"),
+            ("more_author:nonexistent_sess:0", "⚠️ La sesión de búsqueda ha caducado"),
+            ("page:nonexistent_sess:1", "⚠️ Sesión caducada"),
+            ("back:nonexistent_sess", "⚠️ Sesión caducada")
+        ]
+
+        for callback_data, expected_text in test_actions:
+            mock_query = MagicMock()
+            mock_query.data = callback_data
+            mock_query.answer = AsyncMock()
+            mock_query.edit_message_text = AsyncMock()
+
+            mock_user = MagicMock()
+            mock_user.id = 12345
+            mock_user.first_name = "Tester"
+
+            mock_update = MagicMock()
+            mock_update.callback_query = mock_query
+            mock_update.effective_user = mock_user
+
+            mock_context = MagicMock()
+
+            asyncio.run(button_callback(mock_update, mock_context))
+            self.assertTrue(mock_query.edit_message_text.called, f"Failed for {callback_data}")
+            call_text = mock_query.edit_message_text.call_args[0][0]
+            self.assertIn(expected_text, call_text)
+
+    def test_clean_filename_edge_cases(self):
+        """Verify clean_filename handles path traversal, illegal characters, empty strings, and None."""
+        self.assertEqual(clean_filename("../../etc/passwd"), "....etcpasswd")
+        cleaned = clean_filename("Book / : * ? \" < > | Title")
+        for bad_char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']:
+            self.assertNotIn(bad_char, cleaned)
+        self.assertIn("Book", cleaned)
+        self.assertIn("Title", cleaned)
+        self.assertEqual(clean_filename(""), "")
+        self.assertEqual(clean_filename("   "), "")
+        self.assertEqual(clean_filename(None), "")
+
+    def test_is_valid_email_edge_cases(self):
+        """Verify is_valid_email accurately identifies valid and invalid email inputs."""
+        from gabook.bot import is_valid_email
+        self.assertTrue(is_valid_email("test@gmail.com"))
+        self.assertTrue(is_valid_email("lector@kindle.com"))
+        self.assertTrue(is_valid_email("name+tag@sub.domain.org"))
+        self.assertTrue(is_valid_email("  padded@kindle.com  "))
+
+        self.assertFalse(is_valid_email(""))
+        self.assertFalse(is_valid_email("   "))
+        self.assertFalse(is_valid_email(None))
+        self.assertFalse(is_valid_email("notanemail"))
+        self.assertFalse(is_valid_email("user@"))
+        self.assertFalse(is_valid_email("@kindle.com"))
+        self.assertFalse(is_valid_email("user @domain.com"))
+
+    def test_parse_storage_text_edge_cases(self):
+        """Verify parse_storage_text_to_mb handles various formats and invalid inputs gracefully."""
+        from gabook.bot import parse_storage_text_to_mb
+        self.assertEqual(parse_storage_text_to_mb("500 MB"), 500.0)
+        self.assertEqual(parse_storage_text_to_mb("2.5 GB"), 2560.0)
+        self.assertEqual(parse_storage_text_to_mb("1,5 gb"), 1536.0)
+        self.assertEqual(parse_storage_text_to_mb("100"), 100.0)
+        self.assertIsNone(parse_storage_text_to_mb("no numbers here"))
+        self.assertIsNone(parse_storage_text_to_mb(""))
+        self.assertIsNone(parse_storage_text_to_mb(None))
+
+    def test_kindle_models_telemetry_complete(self):
+        """Verify all hardware models in KINDLE_MODELS are valid and compute storage telemetry accurately."""
+        from gabook.config import KINDLE_MODELS
+        test_uid = 11223344
+
+        for model_key, spec in KINDLE_MODELS.items():
+            self.assertIn("label", spec)
+            self.assertIn("total_mb", spec)
+            self.assertTrue(spec["total_mb"] > 0)
+
+            user_manager.set_kindle_model(test_uid, model_key)
+            info = user_manager.get_kindle_storage_info(test_uid)
+            self.assertEqual(info["model_key"], model_key)
+            self.assertEqual(info["total_mb"], spec["total_mb"])
+            self.assertEqual(info["progress_bar"], "[□□□□□□□□□□]")
+
+        # Cleanup
+        users = user_manager.load_users()
+        users.pop(str(test_uid), None)
+        user_manager.save_users(users)
+
+    def test_file_size_limit_guards(self):
+        """Verify file size guard blocks oversized files (> 22 MB) both in mailer and execute_book_send."""
+        import asyncio
+        import tempfile
+        from gabook.services import kindle_mailer
+        from gabook.bot import execute_book_send, SEARCH_SESSIONS
+
+        test_sid = "test_oversized"
+        SEARCH_SESSIONS[test_sid] = {
+            "books": [{"title": "Enciclopedia Gigante", "author": "Varios", "size": "30 MB", "lang": "Spanish"}],
+            "created_at": time.time()
+        }
+
+        with tempfile.NamedTemporaryFile("wb", suffix=".epub", delete=False) as tf:
+            tf.write(b"dummy")
+            tf_path = tf.name
+
+        try:
+            # 1. Test kindle_mailer size guard
+            with patch("os.path.getsize", return_value=25 * 1024 * 1024):
+                result = kindle_mailer.send_to_kindle(tf_path, book_title="Oversized", recipient_email="test@kindle.com")
+                self.assertFalse(result, "send_to_kindle should reject files > 22 MB")
+
+            # 2. Test execute_book_send size guard
+            mock_target_msg = MagicMock()
+            mock_target_msg.edit_text = AsyncMock()
+
+            with patch("gabook.bot.download_epub", return_value=tf_path), \
+                 patch("os.path.getsize", return_value=25 * 1024 * 1024):
+                asyncio.run(execute_book_send(
+                    mock_target_msg,
+                    user_id=123,
+                    session_id=test_sid,
+                    idx=0,
+                    target_email="test@kindle.com",
+                    is_kindle=True
+                ))
+
+            # Verify edit_text showed the oversized file warning
+            self.assertTrue(mock_target_msg.edit_text.called)
+            warning_text = mock_target_msg.edit_text.call_args[0][0]
+            self.assertIn("El archivo es demasiado grande", warning_text)
+            self.assertIn("25.0 MB", warning_text)
+
+        finally:
+            SEARCH_SESSIONS.pop(test_sid, None)
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    @patch("smtplib.SMTP_SSL")
+    def test_kindle_mailer_smtp_failure_handling(self, mock_smtp):
+        """Verify kindle_mailer catches SMTP exceptions gracefully without crashing."""
+        import smtplib
+        import tempfile
+        from gabook.services import kindle_mailer
+
+        mock_smtp.side_effect = smtplib.SMTPConnectError(421, "Connection refused")
+
+        with tempfile.NamedTemporaryFile("wb", suffix=".epub", delete=False) as tf:
+            tf.write(b"data")
+            tf_path = tf.name
+
+        try:
+            with patch.object(kindle_mailer, "GMAIL_USER", "test@gmail.com"), \
+                 patch.object(kindle_mailer, "GMAIL_APP_PASSWORD", "secret123"):
+                success = kindle_mailer.send_to_kindle(tf_path, book_title="Test", recipient_email="test@kindle.com")
+                self.assertFalse(success)
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    @patch("imaplib.IMAP4_SSL")
+    @patch("gabook.services.gmail_monitor.verify_amazon_link")
+    def test_gmail_monitor_auto_verification(self, mock_verify, mock_imap_cls):
+        """Verify monitor_kindle_delivery detects Amazon verification email and approves it."""
+        from gabook.services.gmail_monitor import monitor_kindle_delivery
+
+        mock_mail = MagicMock()
+        mock_imap_cls.return_value = mock_mail
+        mock_mail.search.side_effect = [
+            ("OK", [b""]),          # initial check
+            ("OK", [b"101"])        # loop detection: new email 101
+        ]
+
+        raw_email = (
+            b"From: kindle-delivery@amazon.es\r\n"
+            b"Subject: Verificar solicitud de documento de Kindle\r\n\r\n"
+            b"Haz clic en el enlace para verificar tu documento:\r\n"
+            b"https://www.amazon.es/gp/f.html?verification=xyz123\r\n"
+        )
+        mock_mail.fetch.return_value = ("OK", [(b"101 (RFC822 {150}", raw_email)])
+        mock_verify.return_value = True
+
+        with patch("gabook.services.gmail_monitor.GMAIL_USER", "user@gmail.com"), \
+             patch("gabook.services.gmail_monitor.GMAIL_APP_PASSWORD", "pass123"):
+            result = monitor_kindle_delivery(timeout_seconds=2, poll_interval=0.1)
+            self.assertEqual(result["status"], "verified_auto")
+            self.assertIn("aprobó automáticamente", result["message"])
+            self.assertTrue(mock_mail.logout.called)
+
+    @patch("imaplib.IMAP4_SSL")
+    def test_gmail_monitor_rejection_detection(self, mock_imap_cls):
+        """Verify monitor_kindle_delivery detects Amazon rejection email."""
+        from gabook.services.gmail_monitor import monitor_kindle_delivery
+
+        mock_mail = MagicMock()
+        mock_imap_cls.return_value = mock_mail
+        mock_mail.search.side_effect = [
+            ("OK", [b""]),
+            ("OK", [b"202"])
+        ]
+
+        raw_email = (
+            b"From: kindle-delivery@amazon.es\r\n"
+            b"Subject: Problema con el documento enviado a tu Kindle\r\n\r\n"
+            b"El formato del documento no ha podido ser procesado.\r\n"
+        )
+        mock_mail.fetch.return_value = ("OK", [(b"202 (RFC822 {150}", raw_email)])
+
+        with patch("gabook.services.gmail_monitor.GMAIL_USER", "user@gmail.com"), \
+             patch("gabook.services.gmail_monitor.GMAIL_APP_PASSWORD", "pass123"):
+            result = monitor_kindle_delivery(timeout_seconds=2, poll_interval=0.1)
+            self.assertEqual(result["status"], "rejected")
+            self.assertIn("rechazó el documento", result["message"])
+
+    @patch("gabook.services.book_client.search_libgen")
+    @patch("gabook.services.book_client.search_archive_org")
+    @patch("gabook.services.book_client.search_openlibrary")
+    @patch("gabook.services.book_client.search_gutenberg")
+    def test_search_epubs_network_error_resilience(self, mock_gut, mock_ol, mock_ia, mock_lg):
+        """Verify search_epubs handles source errors and timeouts gracefully without crashing."""
+        mock_lg.side_effect = Exception("Libgen connection timeout")
+        mock_ia.side_effect = Exception("Archive.org 503 Service Unavailable")
+        mock_ol.return_value = []
+        mock_gut.return_value = []
+
+        matching, others = search_epubs("Error Prone Search", max_results=5, target_lang="Spanish")
+        self.assertEqual(matching, [])
+        self.assertEqual(others, [])
+
+    def test_security_sanitization_and_ignore_rules(self):
+        """Verify that .gitignore and .dockerignore contain all required exclusion rules and no real credentials leak."""
+        from gabook.config import PROJECT_ROOT
+
+        # 1. Check .gitignore
+        gitignore_path = PROJECT_ROOT / ".gitignore"
+        self.assertTrue(gitignore_path.exists())
+        gitignore_content = gitignore_path.read_text(encoding="utf-8")
+        self.assertIn(".env", gitignore_content)
+        self.assertIn("users.json", gitignore_content)
+
+        # 2. Check .dockerignore
+        dockerignore_path = PROJECT_ROOT / ".dockerignore"
+        self.assertTrue(dockerignore_path.exists())
+        dockerignore_content = dockerignore_path.read_text(encoding="utf-8")
+        self.assertIn(".env", dockerignore_content)
+        self.assertIn("users.json", dockerignore_content)
+
+        # 3. Check users.example.json contains only dummy data
+        example_users_path = PROJECT_ROOT / "users.example.json"
+        self.assertTrue(example_users_path.exists())
+        example_users_text = example_users_path.read_text(encoding="utf-8")
+        self.assertIn("ejemplo@kindle.com", example_users_text)
+        self.assertIn("tu_correo@gmail.com", example_users_text)
+
+        # 4. Check .env.example contains only placeholders
+        env_example_path = PROJECT_ROOT / ".env.example"
+        self.assertTrue(env_example_path.exists())
+        env_example_text = env_example_path.read_text(encoding="utf-8")
+        self.assertIn("tu_token_de_telegram_aqui", env_example_text)
+        self.assertIn("tu_correo@gmail.com", env_example_text)
 
 if __name__ == "__main__":
     unittest.main()
