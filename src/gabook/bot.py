@@ -126,15 +126,21 @@ def parse_storage_text_to_mb(text: str) -> Optional[float]:
         return val * 1024.0
     return val
 
-def build_preset_keyboard(include_back: bool = False) -> InlineKeyboardMarkup:
-    """Generates dynamic keyboard for preset Kindle devices."""
-    rows = [
-        [InlineKeyboardButton(PRESET_KINDLES["papa"]["label"], callback_data="preset:papa")],
-        [InlineKeyboardButton(PRESET_KINDLES["gonzalo"]["label"], callback_data="preset:gonzalo")],
-        [InlineKeyboardButton(PRESET_KINDLES["gabriel"]["label"], callback_data="preset:gabriel")],
-        [InlineKeyboardButton("✏️ Configurar otro Kindle (@kindle.com)", callback_data="menu:custom_kindle")],
-        [InlineKeyboardButton("🛡️ ¿Cómo autorizar en Amazon? (15 seg)", callback_data="menu:amazon_whitelist")]
-    ]
+def build_preset_keyboard(include_back: bool = False, show_family: bool = False) -> InlineKeyboardMarkup:
+    """Generates keyboard for Kindle setup with universal flow and optional family presets."""
+    if show_family:
+        rows = [
+            [InlineKeyboardButton(PRESET_KINDLES["papa"]["label"], callback_data="preset:papa")],
+            [InlineKeyboardButton(PRESET_KINDLES["gonzalo"]["label"], callback_data="preset:gonzalo")],
+            [InlineKeyboardButton(PRESET_KINDLES["gabriel"]["label"], callback_data="preset:gabriel")],
+            [InlineKeyboardButton("⬅️ Ocultar perfiles familiares", callback_data="menu:kindle")]
+        ]
+    else:
+        rows = [
+            [InlineKeyboardButton("✏️ Configurar mi Kindle (@kindle.com)", callback_data="menu:custom_kindle")],
+            [InlineKeyboardButton("🛡️ Autorizar en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
+            [InlineKeyboardButton("👨‍👩‍👧‍👦 Perfiles Familiares (Papá, Gonzalo...)", callback_data="menu:family_presets")]
+        ]
     if include_back:
         rows.append([InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")])
     return InlineKeyboardMarkup(rows)
@@ -404,37 +410,40 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     return text, InlineKeyboardMarkup(keyboard)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcomes the user with a concise, punchy greeting without vertical clutter."""
+    """Welcomes any user with a concise, universal greeting without clutter."""
     user = update.effective_user
     user_id = user.id
     logger.info(f"🚀 /start recibido de {user.first_name} (ID: {user_id})")
     user_data = get_user_data(user_id)
     kindle_email = user_data.get("kindle_email")
 
-    if not kindle_email:
-        welcome_text = (
-            f"👋 *¡Hola {user.first_name}!* Bienvenido a tu Asistente Kindle.\n\n"
-            "Pide cualquier libro y recíbelo en tu lector en segundos, sin cables.\n\n"
-            "👇 *Para empezar, selecciona tu dispositivo abajo:*"
-        )
-        await update.message.reply_text(
-            welcome_text,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=build_preset_keyboard()
-        )
+    if kindle_email:
+        status_line = f"🎯 *Kindle vinculado:* `{kindle_email}`\n\n"
     else:
-        welcome_text = (
-            f"📚 *¡Hola {user.first_name}!* Tu Asistente está listo.\n"
-            f"🎯 *Destino Kindle:* `{kindle_email}`\n\n"
-            "✍️ *¿Qué libro quieres leer hoy?*\n"
-            "Escribe el nombre o autor aquí abajo, o toca los botones:\n\n"
-            "_(Escribe /ayuda para ver la guía o /autorizar para Amazon)_"
-        )
-        await update.message.reply_text(
-            welcome_text,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=MAIN_KEYBOARD
-        )
+        status_line = "📖 _Descarga cualquier libro en EPUB y recíbelo en tu Kindle._\n\n"
+
+    welcome_text = (
+        f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
+        f"{status_line}"
+        "✍️ *Escribe el título o autor* que quieras leer para empezar:"
+    )
+
+    inline_keyboard = [
+        [
+            InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search"),
+            InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
+        ],
+        [
+            InlineKeyboardButton("🎯 Configurar mi Kindle", callback_data="menu:kindle"),
+            InlineKeyboardButton("❓ Ayuda y Guía", callback_data="menu:guide")
+        ]
+    ]
+
+    await update.message.reply_text(
+        welcome_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard)
+    )
 
 async def temas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays paginated thematic categories for exploration."""
@@ -1100,9 +1109,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "menu:kindle":
-        reply_markup = build_preset_keyboard(include_back=True)
+        reply_markup = build_preset_keyboard(include_back=True, show_family=False)
         await query.edit_message_text(
-            "🎯 *Selecciona el Kindle que deseas usar:*",
+            "🎯 *Configuración de tu Kindle*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Elige una opción para conectar tu lector:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        return
+
+    if data == "menu:family_presets":
+        reply_markup = build_preset_keyboard(include_back=True, show_family=True)
+        await query.edit_message_text(
+            "👨‍👩‍👧‍👦 *Perfiles Familiares Guardados*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Selecciona tu lector Kindle:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
