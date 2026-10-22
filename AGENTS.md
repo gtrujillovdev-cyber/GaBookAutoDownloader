@@ -103,3 +103,40 @@ GaBookAutoDownloader/
    ```bash
    find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -prune -exec rm -rf {} + && find . -name ".DS_Store" -delete && find . -name "*.log" -delete
    ```
+
+---
+
+## 7. ☁️ Protocolo de Despliegue Cloud y Modo de Proceder en Cada Cambio
+
+Para garantizar que el bot opere 24/7 de forma ininterrumpida sin conflictos y de manera completamente gratuita, **todo agente o desarrollador debe seguir obligatoriamente este procedimiento en cada cambio**:
+
+### 1. Arquitectura de Despliegue en Producción
+* **Plataforma:** Render como **Web Service** (`plan: free`) orquestado por `render.yaml`.
+* **Servidor de Salud HTTP:** El bot arranca en un hilo demonio un servidor HTTP (`src/gabook/services/health_server.py`) que escucha en `0.0.0.0:$PORT` y responde `200 OK` en `/health`.
+* **Keep-Alive con UptimeRobot:** Render Free se suspende tras 15 minutos de inactividad HTTP. UptimeRobot monitoriza `https://gabookautodownloader.onrender.com/health` con ping cada 5 minutos, garantizando funcionamiento continuo 24/7/365.
+* **Prohibición de Instancias Duplicadas:** Telegram solo admite un proceso escuchando `getUpdates` por token. El demonio local en macOS (`launchd`) **debe permanecer apagado** mientras Render esté en ejecución para evitar caídas por `Conflict: terminated by other getUpdates`.
+
+### 2. Flujo de Trabajo Obligatorio ante Cada Cambio
+Ante cualquier modificación, corrección o mejora en el código, se debe ejecutar estrictamente este ciclo:
+
+```text
+[Modificación de Código]
+        ↓
+1. Ejecutar Suite de Tests (python -m unittest discover -s tests)
+        ↓
+2. Limpieza de Basura (pyc, __pycache__, logs, .DS_Store)
+        ↓
+3. Auditoría de Seguridad (Cero correos reales/tokens en git diff)
+        ↓
+4. Commit con Autoría Anónima (gtrujillovdev-cyber)
+        ↓
+5. Push a GitHub (git push origin main)
+        ↓ (Render Auto-Deploy)
+6. Verificación de Salud en Producción (curl https://gabookautodownloader.onrender.com/health)
+```
+
+1. **Pruebas Locales:** Nunca hacer commit sin pasar los tests unitarios al 100%.
+2. **Sanitización Estricta:** Verificar con `git status` y `git diff` que ningún archivo sensible (`.env`, `users.json`) sea incluido ni existan datos personales en la documentación.
+3. **Despliegue Automático:** Al hacer push a `origin main`, Render compila y levanta la nueva versión automáticamente vía webhook.
+4. **Comprobación de Salud:** Validar con una petición HTTP que el endpoint `/health` de Render responda con `{"status": "healthy"}` tras el despliegue.
+

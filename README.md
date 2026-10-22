@@ -235,19 +235,20 @@ Para que el bot se ejecute en segundo plano, arranque solo al encender el Mac y 
 
 ---
 
-### Opción B: En la Nube Gratuita 24/7 (Render / Railway / Koyeb)
-El proyecto incluye un `Dockerfile` y `.dockerignore` optimizados:
+### Opción B: En la Nube Gratuita 24/7 (Render Web Service + UptimeRobot)
+La arquitectura oficial y recomendada para mantener el bot activo 24/7/365 de forma 100% gratuita sin depender de un ordenador local:
 
-1. El repositorio se encuentra alojado en GitHub:
-   👉 **[gtrujillovdev-cyber/GaBookAutoDownloader](https://github.com/gtrujillovdev-cyber/GaBookAutoDownloader)**
-2. Entra en [Render.com](https://render.com) ➔ **New +** ➔ **Background Worker**.
-3. Selecciona tu repositorio de GitHub.
-4. En **Environment Variables**, añade las variables de tu archivo `.env`:
-   * `TELEGRAM_BOT_TOKEN`
-   * `GMAIL_USER`
-   * `GMAIL_APP_PASSWORD`
-   * `KINDLE_EMAIL`
-5. Pulsa en **Deploy**. El bot quedará activo las 24 horas del día sin necesidad de tener tu ordenador encendido.
+1. **Despliegue en Render como Web Service**:
+   * El repositorio incluye `render.yaml` preconfigurado.
+   * En [Render.com](https://render.com), crea un **Web Service** conectado a este repositorio.
+   * Configura el plan gratuito (**Free**), comando de inicio `python main.py` y ruta de salud `/health`.
+   * En **Environment Variables**, define tus credenciales (`TELEGRAM_BOT_TOKEN`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `KINDLE_EMAIL`, etc.).
+2. **Keep-Alive con UptimeRobot**:
+   * Para evitar que la instancia gratuita de Render entre en suspensión tras 15 minutos de inactividad:
+   * En [UptimeRobot.com](https://uptimerobot.com), crea un monitor de tipo **HTTP(s)** apuntando a `https://<tu-servicio>.onrender.com/health` con intervalo de **5 minutos**.
+   * Render responderá `{"status": "healthy"}` en cada pulso, manteniendo el bot despierto y operativo permanentemente a coste $0.
+3. **Flujo de Despliegue Continuo (CI/CD)**:
+   * Cada `git push origin main` activa automáticamente el despliegue de la nueva versión en Render sin tiempos de inactividad ni intervención manual.
 
 ---
 
