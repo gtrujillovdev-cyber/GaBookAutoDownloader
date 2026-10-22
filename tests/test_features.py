@@ -436,8 +436,8 @@ class TestBotFeatures(unittest.TestCase):
 
             # Verify completion message
             final_edit_args = mock_target_msg.edit_text.call_args[0][0]
-            self.assertIn("¡Operación completada!", final_edit_args)
-            self.assertIn("Libro subido con éxito y listo para leer en Telegram", final_edit_args)
+            self.assertIn("¡Libro enviado!", final_edit_args)
+            self.assertIn("Listo para leer", final_edit_args)
 
         finally:
             SEARCH_SESSIONS.pop(test_sid, None)

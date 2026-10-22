@@ -1476,8 +1476,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_id = data.split(":")[1]
         SEARCH_SESSIONS.pop(session_id, None)
         await query.edit_message_text(
-            "❌ Búsqueda cancelada.\n\n"
-            "✍️ Escribe otro título o toca *'📚 Explorar por Temas'* en cualquier momento.",
+            "Búsqueda cerrada. ✍️ Escribe otro título cuando quieras.",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -1529,41 +1528,51 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cover_url, synopsis = await asyncio.gather(cover_future, synopsis_future)
 
         synopsis_block = f"📝 *Sinopsis:* _{escape_md(synopsis)}_\n\n" if synopsis else ""
-        kindle_display = f"`{kindle_email}`" if kindle_email else "_No configurado_"
-        personal_display = f"`{personal_email}`" if personal_email else "_No configurado_"
+        
+        # Details to show only if configured/relevant
+        meta_lines = []
+        if kindle_email:
+            meta_lines.append(f"📱 *Kindle:* `{kindle_email}`")
+        if personal_email:
+            meta_lines.append(f"✉️ *Correo:* `{personal_email}`")
+        if kindle_email and storage_info.get("free_display"):
+            meta_lines.append(f"💾 *Espacio Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*")
+        
+        extra_meta = "\n".join(meta_lines) + "\n\n" if meta_lines else ""
 
         preview_text = (
-            "📖 *PREVISUALIZACIÓN DEL LIBRO*\n"
+            "📖 *FICHA DEL LIBRO*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📌 *Título:* *{escape_md(b['title'])}*\n"
-            f"✍️ *Autor:* _{escape_md(b['author'])}_\n"
-            f"🌐 *Idioma:* {escape_md(b['lang'])}\n"
-            f"📅 *Año:* {escape_md(year_str)}\n"
-            f"📦 *Formato:* EPUB ({escape_md(b['size'])})\n\n"
+            f"📌 *{escape_md(b['title'])}*\n"
+            f"✍️ _{escape_md(b['author'])}_\n"
+            f"🌐 {escape_md(b['lang'])}  ·  📅 {escape_md(year_str)}  ·  📦 {escape_md(b['size'])}\n\n"
             f"{synopsis_block}"
-            f"🎯 *Kindle:* {kindle_display}\n"
-            f"✉️ *Correo personal:* {personal_display}\n"
-            f"📊 *Espacio Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*{low_space_alert}\n"
-            "¿A dónde deseas enviar este libro?"
+            f"{extra_meta}"
+            f"{low_space_alert}"
+            "¿A dónde deseas enviarlo?"
         )
 
         preview_keyboard = [
-            [InlineKeyboardButton("🚀 Enviar a mi Kindle", callback_data=f"send_choice:{session_id}:{idx}:kindle")],
-            [InlineKeyboardButton("📥 Descargar aquí en Telegram", callback_data=f"send_choice:{session_id}:{idx}:telegram")]
+            [
+                InlineKeyboardButton("🚀 A mi Kindle", callback_data=f"send_choice:{session_id}:{idx}:kindle"),
+                InlineKeyboardButton("📥 En Telegram", callback_data=f"send_choice:{session_id}:{idx}:telegram")
+            ]
         ]
 
         if personal_email:
             preview_keyboard.append([
-                InlineKeyboardButton(f"✉️ Enviar a mi Correo ({personal_email[:20]}…)", callback_data=f"send_choice:{session_id}:{idx}:personal")
+                InlineKeyboardButton("✉️ A mi Correo", callback_data=f"send_choice:{session_id}:{idx}:personal"),
+                InlineKeyboardButton("✏️ Otro correo...", callback_data=f"send_choice:{session_id}:{idx}:custom")
             ])
         else:
             preview_keyboard.append([
-                InlineKeyboardButton("✉️ Enviar a mi Correo Personal", callback_data=f"send_choice:{session_id}:{idx}:personal")
+                InlineKeyboardButton("✉️ Enviar por Correo", callback_data=f"send_choice:{session_id}:{idx}:personal")
             ])
 
-        preview_keyboard.append([InlineKeyboardButton("✏️ Enviar a otro correo...", callback_data=f"send_choice:{session_id}:{idx}:custom")])
-        preview_keyboard.append([InlineKeyboardButton("⬅️ Ver otras versiones", callback_data=f"back:{session_id}")])
-        preview_keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")])
+        preview_keyboard.append([
+            InlineKeyboardButton("↩ Ver otras versiones", callback_data=f"back:{session_id}"),
+            InlineKeyboardButton("✕ Cerrar", callback_data=f"cancel:{session_id}")
+        ])
 
         link_preview = None
         if cover_url:
