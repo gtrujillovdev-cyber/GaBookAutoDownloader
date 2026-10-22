@@ -13,7 +13,7 @@ Para que Amazon permita que el bot meta libros en tu dispositivo Kindle, cada le
 3. Pulsa el botón **`[ 🔗 Abrir Amazon.es (Ajustes) ]`** o entra directamente aquí:  
    👉 [Preferencias de Documentos Personales de Amazon](https://www.amazon.es/hz/mycd/myx#/home/settings/payment)
 4. En la sección **"Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales"**, pulsa en **"Añadir nueva dirección"**, pega el correo copiado y pulsa Guardar.
-5. Abre el bot en Telegram, toca **`🎯 Mi Kindle`** y selecciona tu perfil familiar (o pulsa **`[ ✏️ Configurar otro Kindle ]`** si eres un usuario nuevo).
+5. Abre el bot en Telegram, toca **`👤 Mi Perfil`** y pulsa **`[ 📱 Configurar Kindle ]`** para escribir tu dirección `@kindle.com` (o simplemente elige un libro y pulsa **`[ 🚀 Enviar a mi Kindle ]`**, el bot te lo pedirá de forma guiada en el chat).
 
 ¡Y listo! Ya no tendrás que volver a configurar nada más.
 
@@ -63,7 +63,7 @@ Si a tu Kindle le queda poco espacio libre (menos de 300 MB o menos que el tama�
 
 ## 📱 Paso 4: Ajustar tu Modelo de Kindle, Espacio e Historial
 
-Desde el botón inferior **`🎯 Mi Kindle`** podrás:
+Desde el botón inferior **`👤 Mi Perfil`** podrás:
 * **Ver tu espacio restante:** Barra de uso visual y megabytes disponibles.
 * **Mis Libros Recientes:** Consultar tus últimas lecturas y reenviarlas con 1 toque.
 * **Seleccionar tu modelo:** Elegir entre Kindle Básico (8 GB), Paperwhite (16 GB), Signature (32 GB), Scribe o modelos anteriores.

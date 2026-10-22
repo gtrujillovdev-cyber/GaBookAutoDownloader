@@ -320,6 +320,40 @@ class TestBotFeatures(unittest.TestCase):
         k2_text, k2_markup = build_tutorial_kindle_step2_markup()
         self.assertIn("Paso 2 de 2", k2_text)
         self.assertTrue(len(k2_markup.inline_keyboard) >= 3)
+        # Ensure no personal family names leaked into tutorial
+        self.assertNotIn("Papá", k2_text)
+        self.assertNotIn("Gonzalo", k2_text)
+
+    def test_streamlined_menus_and_zero_personal_data(self):
+        """Verify streamlined keyboards and complete absence of hardcoded personal names."""
+        from gabook.bot import (
+            build_preset_keyboard,
+            build_profile_markup,
+            MAIN_KEYBOARD
+        )
+        # 1. build_preset_keyboard by default should not contain family presets
+        kb = build_preset_keyboard()
+        btn_texts = [btn.text for row in kb.inline_keyboard for btn in row]
+        for t in btn_texts:
+            self.assertNotIn("Papá", t)
+            self.assertNotIn("Gonzalo", t)
+            self.assertNotIn("familiar", t.lower())
+
+        # 2. build_profile_markup structure
+        test_uid = 123456789
+        p_text, p_markup = build_profile_markup(test_uid)
+        self.assertIn("MI PERFIL Y PREFERENCIAS", p_text)
+        callbacks = [btn.callback_data for row in p_markup.inline_keyboard for btn in row]
+        self.assertIn("menu:advanced_settings", callbacks)
+        self.assertIn("menu:kindle", callbacks)
+        self.assertIn("menu:set_personal_email", callbacks)
+
+        # 3. Main bottom keyboard verification
+        main_btns = [btn.text for row in MAIN_KEYBOARD.keyboard for btn in row]
+        self.assertIn("🔍 Buscar Libro", main_btns)
+        self.assertIn("📚 Explorar Temas", main_btns)
+        self.assertIn("👤 Mi Perfil", main_btns)
+        self.assertIn("📖 Cómo Funciona", main_btns)
 
 if __name__ == "__main__":
     unittest.main()

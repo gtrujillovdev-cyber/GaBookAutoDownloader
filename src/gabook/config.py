@@ -34,15 +34,15 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-# Family preset profiles for 1-tap setup (configurable via .env, with safe generic fallbacks)
+# Preset profiles for 1-tap setup (configurable via .env, with safe generic fallbacks)
 KINDLE_PAPA = os.getenv("KINDLE_EMAIL_PAPA", "familiar1@kindle.com")
 KINDLE_GONZALO = os.getenv("KINDLE_EMAIL_GONZALO", "familiar2@kindle.com")
 KINDLE_GABRIEL = os.getenv("KINDLE_EMAIL_GABRIEL", DEFAULT_KINDLE_EMAIL)
 
 PRESET_KINDLES = {
-    "papa": {"label": os.getenv("KINDLE_LABEL_PAPA", "👨‍🦳 Kindle de Papá"), "email": KINDLE_PAPA},
-    "gonzalo": {"label": os.getenv("KINDLE_LABEL_GONZALO", "👦 Kindle de Gonzalo"), "email": KINDLE_GONZALO},
-    "gabriel": {"label": os.getenv("KINDLE_LABEL_GABRIEL", "👤 Mi Kindle"), "email": KINDLE_GABRIEL}
+    "papa": {"label": os.getenv("KINDLE_LABEL_PAPA", "📖 Lector 1"), "email": KINDLE_PAPA},
+    "gonzalo": {"label": os.getenv("KINDLE_LABEL_GONZALO", "📖 Lector 2"), "email": KINDLE_GONZALO},
+    "gabriel": {"label": os.getenv("KINDLE_LABEL_GABRIEL", "📱 Mi Kindle"), "email": KINDLE_GABRIEL}
 }
 
 # Kindle Hardware Profiles & Usable Storage Capacities (in MB)

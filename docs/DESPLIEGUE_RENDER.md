@@ -51,9 +51,9 @@ En la misma pantalla (o en la pestaña **Environment** de tu servicio en Render)
 | `GMAIL_USER` | *Tu correo de Gmail* |
 | `GMAIL_APP_PASSWORD` | *Tu contraseña de aplicación de 16 letras* |
 | `KINDLE_EMAIL` | *Correo Kindle principal* |
-| `KINDLE_EMAIL_PAPA` | *Correo Kindle de Papá* |
-| `KINDLE_EMAIL_GONZALO` | *Correo Kindle de Gonzalo* |
-| `KINDLE_EMAIL_GABRIEL` | *Tu correo Kindle personal* |
+| `KINDLE_EMAIL_PAPA` | *(Opcional)* Correo Kindle secundario / familiar 1 |
+| `KINDLE_EMAIL_GONZALO` | *(Opcional)* Correo Kindle secundario / familiar 2 |
+| `KINDLE_EMAIL_GABRIEL` | *(Opcional)* Correo Kindle personal |
 | `GROQ_API_KEY` | *(Opcional)* Clave gratuita de Groq para transcribir audios de voz |
 | `PYTHONUNBUFFERED` | `1` |
 

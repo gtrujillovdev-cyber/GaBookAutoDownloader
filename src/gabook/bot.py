@@ -127,26 +127,28 @@ def parse_storage_text_to_mb(text: str) -> Optional[float]:
     return val
 
 def build_preset_keyboard(include_back: bool = False, show_family: bool = False) -> InlineKeyboardMarkup:
-    """Generates keyboard for Kindle setup with universal flow and optional family presets."""
-    if show_family:
-        rows = [
-            [InlineKeyboardButton(PRESET_KINDLES["papa"]["label"], callback_data="preset:papa")],
-            [InlineKeyboardButton(PRESET_KINDLES["gonzalo"]["label"], callback_data="preset:gonzalo")],
-            [InlineKeyboardButton(PRESET_KINDLES["gabriel"]["label"], callback_data="preset:gabriel")],
-            [InlineKeyboardButton("⬅️ Ocultar perfiles familiares", callback_data="menu:kindle")]
-        ]
-    else:
-        rows = [
-            [InlineKeyboardButton("✏️ Configurar mi Kindle (@kindle.com)", callback_data="menu:custom_kindle")],
-            [InlineKeyboardButton("🛡️ Autorizar en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
-            [InlineKeyboardButton("👨‍👩‍👧‍👦 Perfiles Familiares (Papá, Gonzalo...)", callback_data="menu:family_presets")]
-        ]
+    """Generates keyboard for Kindle setup with a clean, intuitive flow."""
+    rows = [
+        [InlineKeyboardButton("✏️ Configurar mi Kindle (@kindle.com)", callback_data="menu:custom_kindle")],
+        [InlineKeyboardButton("🛡️ Autorizar en Amazon (15 seg)", callback_data="menu:amazon_whitelist")]
+    ]
+    if os.getenv("ENABLE_FAMILY_PRESETS", "false").lower() == "true":
+        if show_family:
+            rows = [
+                [InlineKeyboardButton(PRESET_KINDLES["papa"]["label"], callback_data="preset:papa")],
+                [InlineKeyboardButton(PRESET_KINDLES["gonzalo"]["label"], callback_data="preset:gonzalo")],
+                [InlineKeyboardButton(PRESET_KINDLES["gabriel"]["label"], callback_data="preset:gabriel")],
+                [InlineKeyboardButton("⬅️ Ocultar perfiles", callback_data="menu:kindle")]
+            ]
+        else:
+            rows.append([InlineKeyboardButton("👥 Perfiles Familiares Guardados", callback_data="menu:family_presets")])
+
     if include_back:
         rows.append([InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")])
     return InlineKeyboardMarkup(rows)
 
 def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
-    """Generates user profile overview with storage telemetry and action buttons."""
+    """Generates user profile overview with storage telemetry and streamlined action buttons."""
     user_data = get_user_data(user_id)
     storage_info = get_kindle_storage_info(user_id)
 
@@ -161,36 +163,31 @@ def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
         storage_status = "✅ *Espacio óptimo*"
 
     text = (
-        "👤 *MI PERFIL Y DISPOSITIVOS*\n"
+        "👤 *MI PERFIL Y PREFERENCIAS*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📖 *Kindle Vinculado:* `{kindle_email}`\n"
+        f"📱 *Kindle Vinculado:* `{kindle_email}`\n"
         f"✉️ *Correo Personal:* `{personal_email}`\n"
-        f"🌐 *Idioma Preferido:* `{lang}`\n"
+        f"🌐 *Idioma de Búsqueda:* `{lang}`\n"
         f"📚 *Libros enviados:* {books_sent}\n\n"
         "📦 *Almacenamiento de tu Kindle:*\n"
         f"📱 *Modelo:* {storage_info['model']}\n"
         f"📊 *Ocupación:* `{storage_info['progress_bar']}` *{storage_info['percent_used']:.0f}%* ({storage_status})\n"
         f"💾 *Espacio Libre:* *{storage_info['free_display']}* de {storage_info['total_display']}\n"
         f"📤 *Remitente autorizado Amazon:* `{GMAIL_SENDER}`\n\n"
-        "Toca un botón para cambiar tu configuración:"
+        "Toca una opción para configurar:"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton("🎯 Cambiar Kindle", callback_data="menu:kindle"),
+            InlineKeyboardButton("📱 Configurar Kindle", callback_data="menu:kindle"),
             InlineKeyboardButton("✉️ Correo Personal", callback_data="menu:set_personal_email")
         ],
         [
             InlineKeyboardButton("🛡️ Autorizar en Amazon", callback_data="menu:amazon_whitelist"),
-            InlineKeyboardButton("📖 Guía de Inicio", callback_data="menu:guide")
+            InlineKeyboardButton("📚 Mis Libros Recientes", callback_data="menu:history")
         ],
         [
-            InlineKeyboardButton("📱 Modelo de Kindle", callback_data="menu:models"),
-            InlineKeyboardButton("🎛️ Calibrar Espacio", callback_data="menu:calibrate_storage")
-        ],
-        [
-            InlineKeyboardButton("📚 Mis Libros Recientes", callback_data="menu:history"),
-            InlineKeyboardButton("🌐 Cambiar Idioma", callback_data="menu:lang")
+            InlineKeyboardButton("⚙️ Ajustes Avanzados", callback_data="menu:advanced_settings")
         ],
         [
             InlineKeyboardButton("❌ Cerrar", callback_data="cancel_menu")
@@ -216,10 +213,17 @@ def build_guide_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "👇 *¿Qué deseas hacer ahora?*"
     )
     keyboard = [
-        [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")],
-        [InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")],
-        [InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile")],
-        [InlineKeyboardButton("🛡️ Autorizar en Amazon", callback_data="menu:amazon_whitelist")]
+        [
+            InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search"),
+            InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
+        ],
+        [
+            InlineKeyboardButton("👤 Mi Perfil", callback_data="menu:profile"),
+            InlineKeyboardButton("🛡️ Autorizar en Amazon", callback_data="menu:amazon_whitelist")
+        ],
+        [
+            InlineKeyboardButton("❌ Cerrar", callback_data="cancel_menu")
+        ]
     ]
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -243,7 +247,8 @@ def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardButton("🔗 Abrir Amazon.com (Internacional)", url="https://www.amazon.com/hz/mycd/myx#/home/settings/payment")
         ],
         [
-            InlineKeyboardButton("⬅️ Volver", callback_data="menu:profile")
+            InlineKeyboardButton("👤 Ir a Mi Perfil", callback_data="menu:profile"),
+            InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search")
         ]
     ]
     return text, InlineKeyboardMarkup(keyboard)
@@ -311,14 +316,12 @@ def build_tutorial_kindle_step2_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "━━━━━━━━━━━━━━━━━━━━\n"
         "📱 *Vincular tu dispositivo*\n\n"
         "Ahora indica al bot qué lector Kindle recibirá tus libros:\n\n"
-        "• *Si eres familiar:* Toca en **Perfiles Familiares** y elige tu nombre.\n"
-        "• *O escribe tu dirección:* Toca en **Configurar mi @kindle.com**.\n\n"
+        "• *Escribe tu dirección:* Toca en **Configurar mi @kindle.com**.\n\n"
         "💡 *¿Dónde ver tu correo Kindle?*\n"
         "En tu Kindle físico: ve a *Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle*."
     )
     keyboard = [
         [InlineKeyboardButton("✏️ Configurar mi @kindle.com", callback_data="menu:custom_kindle")],
-        [InlineKeyboardButton("👨‍👩‍👧‍👦 Perfiles Familiares (Papá, Gonzalo...)", callback_data="menu:family_presets")],
         [InlineKeyboardButton("🔍 Ya lo configuraré, ir a buscar", callback_data="action:start_direct")],
         [InlineKeyboardButton("⬅️ Volver al Paso 1", callback_data="tutorial:kindle_step1")]
     ]
@@ -357,7 +360,7 @@ def build_models_markup() -> InlineKeyboardMarkup:
     keyboard = []
     for key, model in KINDLE_MODELS.items():
         keyboard.append([InlineKeyboardButton(f"📱 {model['label']}", callback_data=f"set_model:{key}")])
-    keyboard.append([InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")])
+    keyboard.append([InlineKeyboardButton("⬅️ Volver a Ajustes", callback_data="menu:advanced_settings")])
     return InlineKeyboardMarkup(keyboard)
 
 def build_calibration_markup() -> InlineKeyboardMarkup:
@@ -368,7 +371,7 @@ def build_calibration_markup() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🟠 Poco espacio (~ 500 MB libres)", callback_data="cal_storage:500")],
         [InlineKeyboardButton("🔴 Casi lleno (~ 150 MB libres - alerta)", callback_data="cal_storage:150")],
         [InlineKeyboardButton("✍️ Escribir espacio exacto...", callback_data="cal_storage:custom")],
-        [InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")]
+        [InlineKeyboardButton("⬅️ Volver a Ajustes", callback_data="menu:advanced_settings")]
     ])
 
 def build_topics_markup(page: int = 0) -> Tuple[str, InlineKeyboardMarkup]:
@@ -416,8 +419,8 @@ def build_topics_markup(page: int = 0) -> Tuple[str, InlineKeyboardMarkup]:
 # Persistent bottom navigation keyboard
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("🔍 Buscar Libro"), KeyboardButton("📚 Explorar por Temas")],
-        [KeyboardButton("🎯 Mi Kindle"), KeyboardButton("🔄 Reiniciar")]
+        [KeyboardButton("🔍 Buscar Libro"), KeyboardButton("📚 Explorar Temas")],
+        [KeyboardButton("👤 Mi Perfil"), KeyboardButton("📖 Cómo Funciona")]
     ],
     resize_keyboard=True,
     is_persistent=True
@@ -473,40 +476,34 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     return text, InlineKeyboardMarkup(keyboard)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcomes any user, offers guided onboarding if new, or takes existing users straight to search."""
+    """Welcomes any user with a frictionless, intuitive interface."""
     user = update.effective_user
     user_id = user.id
     logger.info(f"🚀 /start recibido de {user.first_name} (ID: {user_id})")
     user_data = get_user_data(user_id)
     kindle_email = user_data.get("kindle_email")
 
-    if not kindle_email:
-        welcome_text = (
-            f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
-            "Tu biblioteca para descargar libros en EPUB o recibirlos en tu Kindle.\n\n"
-            "¿Es la primera vez que usas el bot?\n"
-            "👇 *Elige una opción para empezar:*"
-        )
-        inline_keyboard = [
-            [InlineKeyboardButton("🆕 Sí, soy nuevo (Ver tutorial y autorizar)", callback_data="tutorial:start")],
-            [InlineKeyboardButton("🚀 Ya sé cómo funciona (Ir a buscar)", callback_data="action:start_direct")]
+    kindle_info = f"📱 *Kindle vinculado:* `{kindle_email}`\n\n" if kindle_email else ""
+    welcome_text = (
+        f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
+        "Tu biblioteca para buscar, descargar y recibir libros en segundos.\n\n"
+        f"{kindle_info}"
+        "✨ *¿Cómo deseas recibir tus libros?*\n"
+        "• 📥 *En Telegram:* Descarga directa en EPUB al chat.\n"
+        "• 🚀 *A tu Kindle:* Envío inalámbrico a tu lector.\n"
+        "• ✉️ *A tu Correo:* Envío adjunto a tu email.\n\n"
+        "✍️ *Escribe el título o autor de cualquier libro para empezar:*"
+    )
+    inline_keyboard = [
+        [
+            InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
+            InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
+        ],
+        [
+            InlineKeyboardButton("👤 Mi Perfil", callback_data="menu:profile"),
+            InlineKeyboardButton("📖 Cómo Funciona", callback_data="menu:guide")
         ]
-    else:
-        welcome_text = (
-            f"📚 *¡Hola {user.first_name}! Bienvenido de nuevo a GaBook.*\n"
-            f"📱 *Kindle vinculado:* `{kindle_email}`\n\n"
-            "✍️ *Escribe el título o autor* que buscas para empezar:"
-        )
-        inline_keyboard = [
-            [
-                InlineKeyboardButton("🔍 Buscar Libro", callback_data="action:new_search"),
-                InlineKeyboardButton("📚 Explorar Temas", callback_data="tpage:0")
-            ],
-            [
-                InlineKeyboardButton("⚙️ Configuración / Kindle", callback_data="menu:profile"),
-                InlineKeyboardButton("🎓 Ver Tutorial", callback_data="tutorial:start")
-            ]
-        ]
+    ]
 
     if update.callback_query:
         await update.callback_query.edit_message_text(
@@ -517,6 +514,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(
             welcome_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_KEYBOARD
+        )
+        await update.message.reply_text(
+            "👇 *O elige una opción rápida:*",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(inline_keyboard)
         )
@@ -722,6 +724,26 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # Check interactive pending input states
+    if "awaiting_kindle_for_send" in context.user_data:
+        pending = context.user_data.pop("awaiting_kindle_for_send")
+        if not is_valid_email(query) or not query.lower().endswith("@kindle.com"):
+            context.user_data["awaiting_kindle_for_send"] = pending
+            await update.message.reply_text(
+                "⚠️ *Correo no válido.* Debe ser una dirección que termine en `@kindle.com` (ej: `tu_lector@kindle.com`):",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        set_kindle_email(user_id, query.lower(), user.first_name)
+        status_msg = await update.message.reply_text(
+            f"✅ *Kindle guardado:* `{query.lower()}`\n\n"
+            f"💡 *Recordatorio importante:* Para recibir tus libros, asegúrate de autorizar `{GMAIL_SENDER}` en tu cuenta de Amazon.\n\n"
+            "🚀 Preparando envío a tu Kindle...",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        await execute_book_send(status_msg, user_id, pending["session_id"], pending["idx"], query.lower(), is_kindle=True)
+        return
+
     if "awaiting_email_for_send" in context.user_data:
         pending = context.user_data.pop("awaiting_email_for_send")
         if not is_valid_email(query):
@@ -821,31 +843,31 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # 2. Keywords for topics and categories
-    if query == "📚 Explorar por Temas" or q_lower in ["temas", "generos", "géneros", "categorias", "categorías", "que leer", "qué leer", "recomiendame", "recomiéndame"]:
+    if query in ["📚 Explorar Temas", "📚 Explorar por Temas"] or q_lower in ["temas", "generos", "géneros", "categorias", "categorías", "que leer", "qué leer", "recomiendame", "recomiéndame"]:
         await temas_command(update, context)
         return
 
-    # 3. Keywords for Kindle selection
-    if query == "🎯 Mi Kindle" or q_lower in ["kindle", "mi kindle", "cambiar kindle", "dispositivo"]:
-        await kindle_command(update, context)
+    # 3. Keywords for user profile & Kindle settings
+    if query in ["👤 Mi Perfil", "🎯 Mi Kindle"] or q_lower in ["perfil", "mi perfil", "kindle", "mi kindle", "cuenta", "ajustes", "configuracion", "configuración", "dispositivo"]:
+        await perfil_command(update, context)
         return
 
-    # 4. Keywords for onboarding tutorial
+    # 4. Keywords for help and user guide
+    if query in ["📖 Cómo Funciona", "❓ Ayuda"] or q_lower in ["como funciona", "cómo funciona", "ayuda", "guia", "guía", "manual", "instrucciones"]:
+        await guia_command(update, context)
+        return
+
+    # 5. Keywords for onboarding tutorial
     if q_lower in ["tutorial", "nuevo", "soy nuevo", "primeros pasos", "paso a paso"]:
         await tutorial_command(update, context)
         return
 
-    # 5. Keywords for help and user guide
-    if q_lower in ["ayuda", "como funciona", "cómo funciona", "instrucciones", "que hago", "qué hago", "guia", "guía", "manual"]:
-        await guia_command(update, context)
-        return
-
-    # 5. Keywords for language
+    # 6. Keywords for language
     if q_lower in ["idioma", "idiomas", "lenguaje"]:
         await idioma_command(update, context)
         return
 
-    # 6. Keyword prompt for search
+    # 7. Keyword prompt for search
     if query == "🔍 Buscar Libro" or q_lower in ["buscar", "buscar libro"]:
         await update.message.reply_text(
             "✍️ *Escribe el nombre del libro, autor o tema* que quieras buscar:\n"
@@ -855,7 +877,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
 
-    # 7. Keywords for Amazon authorization / whitelist
+    # 8. Keywords for Amazon authorization / whitelist
     if q_lower in ["autorizar", "lista blanca", "whitelist", "amazon", "no me llega", "no llega", "activar kindle"]:
         await autorizar_command(update, context)
         return
@@ -1231,17 +1253,40 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         return
 
+    if data == "menu:advanced_settings":
+        storage_info = get_kindle_storage_info(user_id)
+        user_data = get_user_data(user_id)
+        text = (
+            "⚙️ *AJUSTES AVANZADOS*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📱 *Modelo de Kindle:* {storage_info['model']}\n"
+            f"💾 *Capacidad libre:* {storage_info['free_display']} de {storage_info['total_display']}\n"
+            f"🌐 *Idioma preferido:* {user_data.get('lang', 'Español')}\n\n"
+            "Selecciona qué deseas personalizar:"
+        )
+        keyboard = [
+            [InlineKeyboardButton("📱 Cambiar Modelo de Kindle", callback_data="menu:models")],
+            [InlineKeyboardButton("🎛️ Calibrar Espacio Libre", callback_data="menu:calibrate_storage")],
+            [InlineKeyboardButton("🌐 Cambiar Idioma de Búsqueda", callback_data="menu:lang")],
+            [InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")]
+        ]
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
     if data == "menu:amazon_whitelist":
         text, reply_markup = build_amazon_whitelist_markup()
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         return
 
     if data == "menu:kindle":
+        user_data = get_user_data(user_id)
+        current = user_data.get("kindle_email") or "Sin configurar"
         reply_markup = build_preset_keyboard(include_back=True, show_family=False)
         await query.edit_message_text(
-            "🎯 *Configuración de tu Kindle*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "Elige una opción para conectar tu lector:",
+            "📱 *Configuración de tu Kindle*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"• *Dirección actual:* `{current}`\n\n"
+            "Elige una opción para conectar o actualizar tu lector:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
@@ -1250,9 +1295,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "menu:family_presets":
         reply_markup = build_preset_keyboard(include_back=True, show_family=True)
         await query.edit_message_text(
-            "👨‍👩‍👧‍👦 *Perfiles Familiares Guardados*\n"
+            "👥 *Perfiles Familiares Guardados*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "Selecciona tu lector Kindle:",
+            "Selecciona el lector que deseas activar:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
@@ -1462,20 +1507,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         return
 
-    # Check Kindle configuration before proceeding with preview or send
-    user_data = get_user_data(user_id)
-    kindle_email = user_data.get("kindle_email")
-
-    if not kindle_email:
-        reply_markup = build_preset_keyboard()
-        await query.edit_message_text(
-            "⚠️ *Primero necesitamos saber en qué Kindle lo quieres leer:*\n"
-            "Toca una de las opciones:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
-        return
-
     # STEP A: SHOW BOOK PREVIEW WITH COVER AND SEND OPTIONS
     if data.startswith("dl:"):
         _, session_id, idx_str = data.split(":")
@@ -1491,7 +1522,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_data = get_user_data(user_id)
         storage_info = get_kindle_storage_info(user_id)
-        kindle_email = user_data.get("kindle_email") or "No configurado"
+        kindle_email = user_data.get("kindle_email")
         personal_email = user_data.get("personal_email")
         book_size_mb = parse_size_to_mb(b.get('size'))
 
@@ -1506,6 +1537,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cover_url, synopsis = await asyncio.gather(cover_future, synopsis_future)
 
         synopsis_block = f"📝 *Sinopsis:* _{escape_md(synopsis)}_\n\n" if synopsis else ""
+        kindle_display = f"`{kindle_email}`" if kindle_email else "_No configurado_"
+        personal_display = f"`{personal_email}`" if personal_email else "_No configurado_"
 
         preview_text = (
             "📖 *PREVISUALIZACIÓN DEL LIBRO*\n"
@@ -1516,8 +1549,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📅 *Año:* {escape_md(year_str)}\n"
             f"📦 *Formato:* EPUB ({escape_md(b['size'])})\n\n"
             f"{synopsis_block}"
-            f"🎯 *Kindle:* `{kindle_email}`\n"
-            f"✉️ *Correo personal:* `{personal_email or 'No configurado'}`\n"
+            f"🎯 *Kindle:* {kindle_display}\n"
+            f"✉️ *Correo personal:* {personal_display}\n"
             f"📊 *Espacio Kindle:* `{storage_info['progress_bar']}` *{storage_info['free_display']} libres*{low_space_alert}\n"
             "¿A dónde deseas enviar este libro?"
         )
@@ -1579,12 +1612,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if dest == "kindle":
             kindle_email = user_data.get("kindle_email")
             if not kindle_email:
-                reply_markup = build_preset_keyboard(include_back=True)
+                context.user_data["awaiting_kindle_for_send"] = {"session_id": session_id, "idx": idx}
+                cancel_kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ Volver a la ficha", callback_data=f"dl:{session_id}:{idx}")],
+                    [InlineKeyboardButton("🛡️ Autorizar Bot en Amazon", callback_data="menu:amazon_whitelist")]
+                ])
                 await query.edit_message_text(
-                    "⚠️ *Primero necesitamos saber en qué Kindle lo quieres leer:*\n"
-                    "Toca una de las opciones:",
+                    "📱 *Configuración de tu Kindle*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "Aún no has vinculado tu lector Kindle en el bot.\n\n"
+                    "✍️ *Escribe la dirección `@kindle.com` de tu lector* (ej: `mi_lector@kindle.com`):\n\n"
+                    "💡 *¿Dónde ver tu correo Kindle?*\n"
+                    "En tu Kindle físico: ve a *Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle*.\n\n"
+                    "_Lo guardaremos en tu perfil y te enviaremos este libro de inmediato._",
                     parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=reply_markup
+                    reply_markup=cancel_kb
                 )
                 return
 
@@ -1670,12 +1712,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = get_user_data(user_id)
         kindle_email = user_data.get("kindle_email")
         if not kindle_email:
-            reply_markup = build_preset_keyboard(include_back=True)
+            context.user_data["awaiting_kindle_for_send"] = {"session_id": session_id, "idx": idx}
+            cancel_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Volver", callback_data=f"dl:{session_id}:{idx}")],
+                [InlineKeyboardButton("🛡️ Autorizar en Amazon", callback_data="menu:amazon_whitelist")]
+            ])
             await query.edit_message_text(
-                "⚠️ *Primero necesitamos saber en qué Kindle lo quieres leer:*\n"
-                "Toca una de las opciones:",
+                "📱 *Configuración de tu Kindle*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Aún no has vinculado tu dirección Send-to-Kindle.\n\n"
+                "✍️ *Escribe la dirección `@kindle.com` de tu lector* (ej: `mi_lector@kindle.com`):",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
+                reply_markup=cancel_kb
             )
             return
         await execute_book_send(query.message, user_id, session_id, idx, target_email=kindle_email, is_kindle=True)
