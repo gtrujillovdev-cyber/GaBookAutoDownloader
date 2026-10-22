@@ -404,34 +404,18 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     return text, InlineKeyboardMarkup(keyboard)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcomes the user and presents instructions and persistent keyboard."""
+    """Welcomes the user with a concise, punchy greeting without vertical clutter."""
     user = update.effective_user
     user_id = user.id
     logger.info(f"🚀 /start recibido de {user.first_name} (ID: {user_id})")
     user_data = get_user_data(user_id)
     kindle_email = user_data.get("kindle_email")
 
-    instructions = (
-        "📖 *¿CÓMO FUNCIONA? (Guía rápida)*\n\n"
-        "1️⃣ *Busca tu libro:*\n"
-        "   Escribe el título o autor aquí abajo, o toca *'📚 Explorar por Temas'* para ver recomendaciones.\n\n"
-        "2️⃣ *Previsualiza:*\n"
-        "   Elige un libro para ver su ficha completa, portada y detalles.\n\n"
-        "3️⃣ *Envía con 1 toque:*\n"
-        "   Elige si enviarlo a tu *Kindle* o directamente a tu *correo personal* con 1 toque.\n\n"
-        "4️⃣ *¡A leer!:*\n"
-        "   Enciende el Wi-Fi de tu Kindle y aparecerá en tu biblioteca.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"🌐 *Idioma actual:* `{user_data.get('lang') or 'Español'}`\n"
-        f"📤 *Remitente aprobado en Amazon:* `{GMAIL_SENDER}`\n\n"
-        "💡 *Sin comandos:* No hace falta escribir barras `/`. Puedes tocar los botones de abajo o escribir palabras como `reiniciar`, `temas`, `ayuda` o el título del libro."
-    )
-
     if not kindle_email:
         welcome_text = (
-            f"👋 *¡Hola {user.first_name}! Bienvenido a tu Asistente Kindle.*\n\n"
-            f"{instructions}\n"
-            "⚠️ *Paso inicial:* Toca abajo tu Kindle para vincular tu dispositivo:"
+            f"👋 *¡Hola {user.first_name}!* Bienvenido a tu Asistente Kindle.\n\n"
+            "Pide cualquier libro y recíbelo en tu lector en segundos, sin cables.\n\n"
+            "👇 *Para empezar, selecciona tu dispositivo abajo:*"
         )
         await update.message.reply_text(
             welcome_text,
@@ -440,10 +424,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         welcome_text = (
-            f"📚 *¡Hola {user.first_name}! Tu Asistente Kindle está listo.*\n\n"
-            f"🎯 *Libros destinados a:* `{kindle_email}`\n\n"
-            f"{instructions}\n"
-            "✍️ *¿Qué libro quieres leer hoy?* Escribe su nombre directamente o usa los botones de abajo:"
+            f"📚 *¡Hola {user.first_name}!* Tu Asistente está listo.\n"
+            f"🎯 *Destino Kindle:* `{kindle_email}`\n\n"
+            "✍️ *¿Qué libro quieres leer hoy?*\n"
+            "Escribe el nombre o autor aquí abajo, o toca los botones:\n\n"
+            "_(Escribe /ayuda para ver la guía o /autorizar para Amazon)_"
         )
         await update.message.reply_text(
             welcome_text,
