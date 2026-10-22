@@ -495,7 +495,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not kindle_email:
         welcome_text = (
-            f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
+            "📚 *¡Bienvenido a GaBook!*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "Tu biblioteca personal para buscar, leer y recibir cualquier libro en EPUB.\n\n"
             "✨ *Puedes disfrutar tus libros en:*\n"
@@ -510,7 +510,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     else:
         welcome_text = (
-            f"📚 *¡Hola {user.first_name}! Bienvenido de nuevo.*\n"
+            "📚 *¡Bienvenido de nuevo a GaBook!*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📱 *Kindle vinculado:* `{kindle_email}`\n\n"
             "✍️ *Escribe el título o autor* de cualquier libro en el chat para buscarlo al instante:"
@@ -912,7 +912,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not groq_key and not openai_key:
         await update.message.reply_text(
-            f"🎙️ *¡Hola {user.first_name}! He recibido tu nota de voz.*\n\n"
+            "🎙️ *¡Nota de voz recibida!*\n\n"
             "💡 Para activar la transcripción automática por voz puedes añadir tu clave gratuita de Groq o Whisper en la configuración de la nube (`GROQ_API_KEY`).\n\n"
             "✍️ *Por ahora, por favor escribe el nombre del libro o autor que buscas aquí abajo:*",
             parse_mode=ParseMode.MARKDOWN,
