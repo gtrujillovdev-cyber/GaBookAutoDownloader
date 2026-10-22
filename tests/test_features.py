@@ -49,9 +49,8 @@ class TestBotFeatures(unittest.TestCase):
         """Verify pagination produces 3 pages with correct button counts."""
         for page in range(3):
             text, markup = build_topics_markup(page)
-            self.assertIn("Explorador por Temáticas", text)
+            self.assertIn("¿Qué te apetece leer?", text)
             self.assertIn(f"Página {page + 1} de 3", text)
-            self.assertIn("24 géneros disponibles", text)
             # 8 buttons arranged in 4 rows of 2, plus nav row, plus cancel row = 6 rows
             self.assertEqual(len(markup.inline_keyboard), 6, f"Page {page} should have 6 rows")
 
@@ -343,7 +342,7 @@ class TestBotFeatures(unittest.TestCase):
         # 2. build_profile_markup structure
         test_uid = 123456789
         p_text, p_markup = build_profile_markup(test_uid)
-        self.assertIn("MI PERFIL Y PREFERENCIAS", p_text)
+        self.assertIn("MI PERFIL", p_text)
         callbacks = [btn.callback_data for row in p_markup.inline_keyboard for btn in row]
         self.assertIn("menu:advanced_settings", callbacks)
         self.assertIn("menu:kindle", callbacks)
@@ -381,7 +380,7 @@ class TestBotFeatures(unittest.TestCase):
         # Exactly 1 message must be sent to the user
         self.assertEqual(mock_message.reply_text.call_count, 1)
         args, kwargs = mock_message.reply_text.call_args
-        self.assertIn("¡Hola Gabriel! Bienvenido a GaBook", args[0])
+        self.assertIn("Bienvenido a GaBook", args[0])
         self.assertEqual(kwargs.get("reply_markup"), MAIN_KEYBOARD)
 
     def test_telegram_direct_download_execution(self):

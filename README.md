@@ -16,8 +16,8 @@ Amazon bloquea los envíos a Kindle si el remitente no está en su lista blanca.
 2. **Autoriza el correo del bot en Amazon:**
    * En el chat, escribe `/autorizar` o pulsa el botón **`[ 🛡️ Autorizar en Amazon ]`**.
    * Toca el correo remitente que aparece en pantalla para copiarlo con 1 solo toque.
-   * Pulsa el botón **`[ 🔗 Abrir Amazon.es (Ajustes) ]`** (te lleva directo a tu cuenta de Amazon).
-   * En la sección *"Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales"*, pulsa **"Añadir una nueva dirección"**, pega el correo y pulsa Guardar.
+   * Pulsa el botón **`[ 🔗 Abrir Amazon.es (Ajustes) ]`** (te abre directamente la pestaña **Preferencias** en tu cuenta de Amazon).
+   * Desliza la página hasta **abajo del todo** a la sección *"Configuración de documentos personales"*, y en *"Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales"*, pulsa **"Añadir una nueva dirección"**, pega el correo y pulsa Guardar.
 3. **Conecta tu Kindle al bot:**
    * Toca **`🎯 Mi Kindle`** en la barra inferior y elige tu perfil familiar.
    * Si eres un usuario nuevo, pulsa **`[ ✏️ Configurar otro Kindle ]`** y escribe tu dirección `@kindle.com` *(la encuentras en tu Kindle en Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle)*.

@@ -168,18 +168,21 @@ def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
     else:
         storage_status = "✅ *Espacio óptimo*"
 
+    kindle_line = f"📱 *Kindle:* `{kindle_email}`\n" if kindle_email else ""
+    email_line = f"✉️ *Correo:* `{personal_email}`\n" if personal_email else ""
+    storage_line = (
+        f"💾 *Espacio:* `{storage_info['progress_bar']}` {storage_info['free_display']} de {storage_info['total_display']} ({storage_status})\n"
+        if kindle_email else ""
+    )
+
     text = (
-        "👤 *MI PERFIL Y PREFERENCIAS*\n"
+        "👤 *MI PERFIL*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📱 *Kindle Vinculado:* `{kindle_email}`\n"
-        f"✉️ *Correo Personal:* `{personal_email}`\n"
-        f"🌐 *Idioma de Búsqueda:* `{lang}`\n"
-        f"📚 *Libros enviados:* {books_sent}\n\n"
-        "📦 *Almacenamiento de tu Kindle:*\n"
-        f"📱 *Modelo:* {storage_info['model']}\n"
-        f"📊 *Ocupación:* `{storage_info['progress_bar']}` *{storage_info['percent_used']:.0f}%* ({storage_status})\n"
-        f"💾 *Espacio Libre:* *{storage_info['free_display']}* de {storage_info['total_display']}\n"
-        f"📤 *Remitente autorizado Amazon:* `{GMAIL_SENDER}`\n\n"
+        f"{kindle_line}"
+        f"{email_line}"
+        f"🌐 *Idioma:* `{lang}`\n"
+        f"📚 *Libros enviados:* {books_sent}\n"
+        f"{storage_line}\n"
         "Toca una opción para configurar:"
     )
 
@@ -238,11 +241,13 @@ def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
     text = (
         "🛡️ *AUTORIZAR ENVÍOS EN AMAZON (KINDLE)*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Amazon requiere que autorices el correo del bot para entregar libros en tu Kindle:\n\n"
+        "Amazon requiere que autorices el correo del bot para entregarte libros sin cables:\n\n"
         "1️⃣ *Copia el correo del bot* (toca para copiar):\n"
         f"`{GMAIL_SENDER}`\n\n"
-        "2️⃣ Abre los ajustes de tu cuenta Amazon tocando abajo.\n"
-        "3️⃣ En *'Direcciones autorizadas para documentos personales'*, añade el correo copiado.\n\n"
+        "2️⃣ Toca el botón de abajo para abrir Amazon en la pestaña **Preferencias**.\n"
+        "3️⃣ Desliza hasta **abajo del todo** a la sección *'Configuración de documentos personales'*.\n"
+        "4️⃣ En *'Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales'*, "
+        "pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
         "✅ ¡Listo! Ya podrás recibir cualquier libro con 1 toque."
     )
     keyboard = [
@@ -303,8 +308,9 @@ def build_tutorial_kindle_step1_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "Amazon requiere que autorices el correo del bot para entregarte libros sin cables (solo se hace **1 vez**):\n\n"
         "1️⃣ *Copia este correo del bot* (toca para copiar):\n"
         f"`{GMAIL_SENDER}`\n\n"
-        "2️⃣ Pulsa el botón de abajo según tu tienda Amazon habitual.\n"
-        "3️⃣ En *'Direcciones autorizadas para documentos personales'*, pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
+        "2️⃣ Pulsa el botón de abajo para abrir Amazon (se abrirá en **Preferencias**).\n"
+        "3️⃣ Desliza hasta **abajo del todo** a la sección *'Configuración de documentos personales'*.\n"
+        "4️⃣ En *'Lista de direcciones autorizadas'*, pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
         "👇 Cuando lo hayas añadido en Amazon, pulsa en Continuar:"
     )
     keyboard = [
@@ -415,10 +421,9 @@ def build_topics_markup(page: int = 0) -> Tuple[str, InlineKeyboardMarkup]:
     keyboard.append([InlineKeyboardButton("❌ Cerrar", callback_data="cancel_menu")])
 
     text = (
-        "📚 *Explorador por Temáticas y Géneros*\n\n"
-        "¿Qué tipo de lectura te apetece hoy?\n"
-        f"_(Página {page + 1} de {total_pages} - {total_topics} géneros disponibles)_\n\n"
-        "Toca una temática para descubrir los mejores libros disponibles:"
+        "📚 *¿Qué te apetece leer?*\n"
+        f"_(Página {page + 1} de {total_pages})_\n\n"
+        "Toca una temática para explorar:"
     )
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -453,9 +458,8 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     keyboard = []
     for idx_offset, b in enumerate(current_books):
         global_idx = start_idx + idx_offset
-        title_btn = b['title'][:28] + ("…" if len(b['title']) > 28 else "")
-        meta = f"{b['lang']} | {b['size']}"
-        button_text = f"📖 {title_btn} ({meta})"
+        title_btn = b['title'][:32] + ("…" if len(b['title']) > 32 else "")
+        button_text = f"📖 {title_btn}  ·  {b['size']}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"dl:{session_id}:{global_idx}")])
 
     # Pagination navigation buttons
@@ -471,7 +475,7 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
     if len(nav_row) > 1:
         keyboard.append(nav_row)
 
-    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"cancel:{session_id}")])
+    keyboard.append([InlineKeyboardButton("✕ Cerrar", callback_data=f"cancel:{session_id}")])
 
     text = (
         f"{note}📚 *Resultados para:* _{escape_md(query)}_\n"
@@ -489,16 +493,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data = get_user_data(user_id)
     kindle_email = user_data.get("kindle_email")
 
-    kindle_info = f"📱 *Kindle vinculado:* `{kindle_email}`\n\n" if kindle_email else ""
+    kindle_info = f"\n📱 Kindle vinculado: `{kindle_email}`\n" if kindle_email else ""
     welcome_text = (
-        f"📚 *¡Hola {user.first_name}! Bienvenido a GaBook.*\n"
-        "Tu biblioteca para buscar, descargar y recibir libros en segundos.\n\n"
-        f"{kindle_info}"
-        "✨ *¿Cómo deseas recibir tus libros?*\n"
-        "• 📥 *En Telegram:* Descarga directa en EPUB al chat.\n"
-        "• 🚀 *A tu Kindle:* Envío inalámbrico a tu lector.\n"
-        "• ✉️ *A tu Correo:* Envío adjunto a tu email.\n\n"
-        "✍️ *Escribe el título o autor de cualquier libro para empezar:*"
+        f"📚 *¡Hola {user.first_name}!* Bienvenido a GaBook.\n\n"
+        "Busca cualquier libro y recíbelo al instante en Telegram, "
+        f"en tu Kindle o en tu correo.{kindle_info}\n"
+        "✍️ *Escribe un título o autor para empezar:*"
     )
     inline_keyboard = [
         [
@@ -975,13 +975,13 @@ async def execute_book_send(
 
     dest_label = "tu Kindle" if is_kindle else "tu correo electrónico"
     total_steps = 3 if is_kindle else 2
+    dots = ["●○○", "●●○", "●●●"]
 
     # Step 1: Download
     await target_msg.edit_text(
-        f"⏳ *[1/{total_steps}] Descargando EPUB...*\n\n"
-        f"📖 *{title_md}*\n"
-        f"✍️ _{author_md}_\n"
-        f"📦 Tamaño: {escape_md(selected_book['size'])} | Idioma: *{escape_md(selected_book['lang'])}*",
+        f"📥 *Descargando libro...*  {dots[0]}\n\n"
+        f"📖 *{title_md}* — _{author_md}_\n"
+        f"📦 {escape_md(selected_book['size'])}  ·  {escape_md(selected_book['lang'])}",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -1016,9 +1016,8 @@ async def execute_book_send(
         if target_email == "telegram":
             # Direct Telegram document upload
             await target_msg.edit_text(
-                f"⏳ *[2/2] Subiendo EPUB directamente a Telegram...*\n\n"
-                f"📖 *{title_md}*\n"
-                f"✍️ _{author_md}_",
+                f"📤 *Subiendo a Telegram...*  {dots[1]}\n\n"
+                f"📖 *{title_md}* — _{author_md}_",
                 parse_mode=ParseMode.MARKDOWN
             )
             chat_id = target_msg.chat_id
@@ -1053,9 +1052,9 @@ async def execute_book_send(
         else:
             # Step 2: Send via SMTP
             await target_msg.edit_text(
-                f"⏳ *[2/{total_steps}] Enviando a {dest_label}...*\n\n"
+                f"📧 *Enviando a {dest_label}...*  {dots[1]}\n\n"
                 f"📖 *{title_md}*\n"
-                f"📧 Destino: `{target_email}`",
+                f"🎯 Destino: `{target_email}`",
                 parse_mode=ParseMode.MARKDOWN
             )
 
@@ -1082,41 +1081,30 @@ async def execute_book_send(
             if is_kindle:
                 # Step 3: Monitor Gmail for Amazon confirmation
                 await target_msg.edit_text(
-                    f"⏳ *[3/3] Correo enviado. Verificando confirmación de Amazon en Gmail...*\n\n"
+                    f"🛡️ *Verificando entrega en Amazon...*  {dots[2]}\n\n"
                     f"📖 *{title_md}*\n"
-                    "_Comprobando si Amazon solicita verificación o aprueba la entrega..._",
+                    "_Esperando confirmación silenciosa..._",
                     parse_mode=ParseMode.MARKDOWN
                 )
 
                 verify_result = await loop.run_in_executor(None, monitor_kindle_delivery, 60, 5)
                 status_icon = "🎉" if verify_result["status"] in ["verified_auto", "delivered_silent"] else "⚠️"
                 status_desc = escape_md(verify_result['message'])
-                next_tip = (
-                    "💡 *Pasos en tu Kindle:*\n"
-                    "• Activa Wi-Fi y pulsa *Sincronizar*.\n"
-                    "• En la Biblioteca, asegúrate de ver la pestaña *'Documentos'* o *'Todos'* (en los modelos modernos los envíos no aparecen en 'Libros').\n"
-                    "• Si no aparece, comprueba si Amazon te envió un correo para autorizar/verificar la entrega."
-                )
+                next_tip = "💡 *Tip:* Conecta tu Kindle a Wi-Fi y pulsa *Sincronizar* (mira en *Documentos* o *Todos*)."
             else:
                 status_icon = "🎉"
-                status_desc = "Libro enviado con éxito a tu bandeja de entrada."
-                next_tip = "💡 *Próximo paso:* Abre tu correo electrónico para descargar o leer tu archivo EPUB."
+                status_desc = "Libro enviado con éxito a tu bandeja."
+                next_tip = "💡 *Tip:* Revisa tu bandeja de entrada para abrir o descargar el EPUB."
 
         storage_info = get_kindle_storage_info(user_id)
-        storage_footer = f"\n📦 *Espacio restante en Kindle:* `{storage_info['progress_bar']}` {storage_info['free_display']} libres" if is_kindle else ""
+        storage_footer = f"  ·  Espacio Kindle: `{storage_info['progress_bar']}`" if is_kindle else ""
 
         final_message = (
-            f"{status_icon} *¡Operación completada!*\n\n"
-            f"📖 *{title_md}*\n"
-            f"✍️ _{author_md}_\n"
-            f"🎯 Destino: `{target_email}`\n"
-            f"🌐 Idioma: {escape_md(selected_book['lang'])}\n"
-            f"📦 Tamaño: {escape_md(selected_book['size'])}{storage_footer}\n\n"
-            f"📬 *Estado:* {status_desc}\n\n"
+            f"{status_icon} *¡Libro enviado!*\n\n"
+            f"📖 *{title_md}* — _{author_md}_\n"
+            f"🎯 `{target_email}` ({escape_md(selected_book['size'])}{storage_footer})\n\n"
             f"{next_tip}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "👇 *¿Quieres pedir otro libro?*\n"
-            "Escribe su nombre o toca un botón de abajo:"
+            "✍️ Escribe otro título o explora abajo:"
         )
 
         clean_author = selected_book.get("author", "").strip()
@@ -1162,8 +1150,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "cancel_menu":
         await query.edit_message_text(
-            "📚 Menú de temáticas cerrado.\n\n"
-            "✍️ Puedes escribir directamente el nombre de cualquier libro o autor para buscarlo.",
+            "Menú cerrado.\n\n"
+            "✍️ Escribe el nombre de cualquier libro o autor para buscarlo.",
             parse_mode=ParseMode.MARKDOWN
         )
         return
