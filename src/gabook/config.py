@@ -62,35 +62,35 @@ LOW_STORAGE_THRESHOLD_MB = 300.0  # Alert when less than 300 MB remaining
 
 # Thematic categories for browsing (24 curated genres across 3 pages)
 TOPICS = [
-    # Página 1: Historia, Arqueología, Humanidades y Clásicos
-    {"label": "🏺 Arqueología y Civiliz.", "query": "civilizaciones antiguas", "title": "Arqueología y Civilizaciones Antiguas"},
-    {"label": "🦴 Antropología y Evolución", "query": "antropologia", "title": "Antropología y Evolución Humana"},
-    {"label": "🏛️ Arquitectura y Urbanismo", "query": "arquitectura", "title": "Arquitectura, Urbanismo y Diseño"},
-    {"label": "⚔️ Novela Histórica Épica", "query": "novela historica", "title": "Novela Histórica Épica"},
+    # Página 1: Superventas, Ficción Popular y Novedades Recomendadas
+    {"label": "🔥 Top Más Leídos", "query": "bestseller", "title": "Los Libros Más Leídos y Populares"},
+    {"label": "🏆 Premios y Éxitos", "query": "premio planeta", "title": "Obras Premiadas y Grandes Éxitos"},
+    {"label": "⚔️ Novela Histórica", "query": "novela historica", "title": "Novela Histórica Épica"},
+    {"label": "🔍 Novela Negra / Thriller", "query": "novela negra", "title": "Novela Negra, Policiaca y Thriller"},
+    {"label": "🧠 Suspense Psicológico", "query": "suspense psicologico", "title": "Suspense y Misterio Psicológico"},
+    {"label": "🚀 Ciencia Ficción", "query": "ciencia ficcion", "title": "Ciencia Ficción y Futuro"},
+    {"label": "🧙‍♂️ Fantasía Épica", "query": "fantasia epica", "title": "Fantasía Épica y Magia"},
+    {"label": "🌱 Crecimiento Personal", "query": "desarrollo personal", "title": "Desarrollo Personal y Bienestar"},
+
+    # Página 2: Investigación, Crónica Real, Viajes y Pensamiento
     {"label": "📜 Historia de España", "query": "historia espana", "title": "Historia y Crónicas de España"},
-    {"label": "🪖 Ficción Bélica y Militar", "query": "historia militar", "title": "Ficción Bélica y Militar"},
-    {"label": "🕵️ Espionaje y Guerra Fría", "query": "novela espionaje", "title": "Espionaje y Guerra Fría"},
-    {"label": "🌐 Geopolítica y Estrategia", "query": "geopolitica", "title": "Geopolítica y Relaciones Internacionales"},
-
-    # Página 2: Investigación, Pensamiento, Crónica Real y Viajes
-    {"label": "🔍 Novela Negra y Policiaca", "query": "novela negra", "title": "Novela Negra y Policiaca"},
-    {"label": "🕵️‍♂️ Mafia y Crónica Real", "query": "mafia", "title": "Mafia, Crimen Organizado y Crónica Real"},
+    {"label": "🏺 Arqueología y Civiliz.", "query": "civilizaciones antiguas", "title": "Arqueología y Civilizaciones Antiguas"},
+    {"label": "🕵️‍♂️ Mafia y Crónica Negra", "query": "mafia", "title": "Mafia, Crimen y Crónica Real"},
+    {"label": "🕵️ Espionaje / Guerra Fría", "query": "novela espionaje", "title": "Espionaje y Guerra Fría"},
     {"label": "🧭 Grandes Viajes y Explor.", "query": "viajes expedicion", "title": "Grandes Viajes y Exploración"},
-    {"label": "🤔 Filosofía y Pensamiento", "query": "filosofia", "title": "Filosofía y Grandes Pensadores"},
     {"label": "👤 Biografías y Memorias", "query": "biografia", "title": "Biografías y Memorias"},
-    {"label": "🔬 Divulgación Científica", "query": "divulgacion cientifica", "title": "Divulgación Científica y Tecnología"},
-    {"label": "📖 Clásicos Universales", "query": "clasicos literatura", "title": "Grandes Clásicos de la Literatura"},
-    {"label": "⏳ Ucronías (Hist. Alternativa)", "query": "ucronia", "title": "Historia Alternativa (Ucronías)"},
+    {"label": "🔬 Ciencia y Tecnología", "query": "divulgacion cientifica", "title": "Divulgación Científica y Tecnología"},
+    {"label": "🤔 Filosofía y Reflexión", "query": "filosofia", "title": "Filosofía y Grandes Pensadores"},
 
-    # Página 3: Ficción, Suspense y Géneros Narrativos
-    {"label": "💻 Thriller Tecnológico", "query": "tecno thriller", "title": "Thriller Tecnológico / Tecno-thriller"},
-    {"label": "🧠 Suspense Psicológico", "query": "suspense psicologico", "title": "Suspense Psicológico"},
-    {"label": "🚀 Ciencia Ficción", "query": "ciencia ficcion", "title": "Ciencia Ficción"},
-    {"label": "🧙‍♂️ Fantasía Épica", "query": "fantasia epica", "title": "Fantasía Épica"},
-    {"label": "🧩 Misterio / Whodunit", "query": "novela misterio", "title": "Misterio / Whodunit (Enigmas)"},
-    {"label": "👻 Terror y Novela Gótica", "query": "novela terror", "title": "Terror y Horror"},
-    {"label": "✒️ Poesía y Antologías", "query": "poesia", "title": "Poesía y Antologías"},
-    {"label": "🌱 Desarrollo Personal", "query": "desarrollo personal", "title": "Desarrollo Personal y Autoayuda"}
+    # Página 3: Clásicos, Humanidades y Otros Géneros
+    {"label": "📖 Clásicos Universales", "query": "clasicos literatura", "title": "Grandes Clásicos de la Literatura"},
+    {"label": "🏛️ Arquitectura y Diseño", "query": "arquitectura", "title": "Arquitectura, Urbanismo y Diseño"},
+    {"label": "🦴 Antropología y Evolución", "query": "antropologia", "title": "Antropología y Evolución Humana"},
+    {"label": "🪖 Historia Bélica y Militar", "query": "historia militar", "title": "Ficción e Historia Militar"},
+    {"label": "🌐 Geopolítica y Estrategia", "query": "geopolitica", "title": "Geopolítica y Relaciones Internacionales"},
+    {"label": "⏳ Historia Alternativa", "query": "ucronia", "title": "Historia Alternativa (Ucronías)"},
+    {"label": "👻 Terror y Novela Gótica", "query": "novela terror", "title": "Terror, Misterio y Gótico"},
+    {"label": "✒️ Poesía y Relatos", "query": "poesia", "title": "Poesía y Antologías"}
 ]
 
 # Natural language map for target language parsing

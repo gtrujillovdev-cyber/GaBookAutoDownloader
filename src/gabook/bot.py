@@ -712,10 +712,18 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_
             books_to_show = other_books
             note = f"⚠️ _No se encontraron en *{escape_md(lang_display)}*, pero aquí tienes opciones en otros idiomas:_\n\n"
         else:
+            no_results_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📚 Explorar Géneros y Top", callback_data="tpage:0")],
+                [InlineKeyboardButton("🤫 Buscar en Biblioteca Secreta", url="https://t.me/BibliotecaSecreta876Bot")]
+            ])
             await status_msg.edit_text(
                 f"❌ No se encontraron libros en formato EPUB para: *{escape_md(clean_query)}*.\n\n"
-                "💡 Prueba con otra palabra clave, autor o explora con *'📚 Explorar por Temas'*.",
-                parse_mode=ParseMode.MARKDOWN
+                "💡 *Consejos de búsqueda:*\n"
+                "• Prueba escribiendo solo el apellido del autor o una palabra clave del título.\n"
+                "• Explora por categorías en *'Explorar Géneros y Top'*.\n"
+                "• O consulta el bot de la comunidad *Biblioteca Secreta* con el botón de abajo:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=no_results_kb
             )
             return
 
