@@ -173,18 +173,47 @@ def build_profile_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardButton("✉️ Correo Personal", callback_data="menu:set_personal_email")
         ],
         [
-            InlineKeyboardButton("📱 Modelo de Kindle", callback_data="menu:models"),
-            InlineKeyboardButton("🎛️ Calibrar Espacio", callback_data="menu:calibrate_storage")
+            InlineKeyboardButton("🛡️ Autorizar en Amazon", callback_data="menu:amazon_whitelist"),
+            InlineKeyboardButton("📱 Modelo de Kindle", callback_data="menu:models")
         ],
         [
-            InlineKeyboardButton("📚 Mis Libros Recientes", callback_data="menu:history"),
-            InlineKeyboardButton("🌐 Cambiar Idioma", callback_data="menu:lang")
+            InlineKeyboardButton("🎛️ Calibrar Espacio", callback_data="menu:calibrate_storage"),
+            InlineKeyboardButton("📚 Mis Libros Recientes", callback_data="menu:history")
         ],
         [
+            InlineKeyboardButton("🌐 Cambiar Idioma", callback_data="menu:lang"),
             InlineKeyboardButton("❌ Cerrar", callback_data="cancel_menu")
         ]
     ]
 
+    return text, InlineKeyboardMarkup(keyboard)
+
+def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
+    """Generates the 1-touch guided assistant to whitelist the bot sender on Amazon."""
+    text = (
+        "🛡️ *AUTORIZAR TU KINDLE EN AMAZON*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Amazon bloquea los libros enviados por email si el remitente no está autorizado. "
+        "Solo tienes que hacer este paso **1 vez en la vida** (tarda 15 segundos):\n\n"
+        "1️⃣ *Copia este correo del bot* (toca sobre él para copiar):\n"
+        f"`{GMAIL_SENDER}`\n\n"
+        "2️⃣ *Abre los ajustes de tu cuenta de Amazon:*\n"
+        "Toca el botón que corresponda a tu tienda habitual abajo.\n\n"
+        "3️⃣ En la sección *'Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales'*, "
+        "pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
+        "✅ ¡Listo! A partir de ese momento, cualquier libro que pidas te llegará directamente a tu Kindle físico."
+    )
+    keyboard = [
+        [
+            InlineKeyboardButton("🔗 Abrir Amazon.es (España)", url="https://www.amazon.es/hz/mycd/myx#/home/settings/payment")
+        ],
+        [
+            InlineKeyboardButton("🔗 Abrir Amazon.com (Internacional)", url="https://www.amazon.com/hz/mycd/myx#/home/settings/payment")
+        ],
+        [
+            InlineKeyboardButton("⬅️ Volver al Perfil", callback_data="menu:profile")
+        ]
+    ]
     return text, InlineKeyboardMarkup(keyboard)
 
 def build_history_markup(user_id: int) -> Tuple[str, InlineKeyboardMarkup]:
@@ -406,12 +435,17 @@ async def kindle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         set_kindle_email(user_id, email_input, user.first_name)
+        whitelist_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛡️ Autorizar Bot en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
+            [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]
+        ])
         await update.message.reply_text(
             f"✅ *Kindle configurado con éxito:* `{email_input}`\n\n"
-            f"Recuerda que `{GMAIL_SENDER}` debe estar en la lista de remitentes aprobados de Amazon.\n"
-            "¡Ya puedes pedir cualquier libro!",
+            f"💡 *Paso importante:* Para que Amazon permita la entrega en tu Kindle, "
+            f"debes autorizar `{GMAIL_SENDER}` en tu cuenta de Amazon.\n\n"
+            "Toca el botón abajo para hacerlo fácilmente en 15 segundos:",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=MAIN_KEYBOARD
+            reply_markup=whitelist_kb
         )
         return
 
@@ -427,6 +461,11 @@ async def perfil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     text, reply_markup = build_profile_markup(user_id)
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+
+async def autorizar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows the 1-tap Amazon whitelist setup guide."""
+    text, reply_markup = build_amazon_whitelist_markup()
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
 
 async def idioma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -663,6 +702,11 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_KEYBOARD
         )
+        return
+
+    # 7. Keywords for Amazon authorization / whitelist
+    if q_lower in ["autorizar", "lista blanca", "whitelist", "amazon", "no me llega", "no llega", "activar kindle"]:
+        await autorizar_command(update, context)
         return
 
     # Treat any other text as an automatic book search query
@@ -994,6 +1038,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Handle profile and settings menus
     if data == "menu:profile":
         text, reply_markup = build_profile_markup(user_id)
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        return
+
+    if data == "menu:amazon_whitelist":
+        text, reply_markup = build_amazon_whitelist_markup()
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         return
 
@@ -1448,6 +1497,9 @@ def main():
     application.add_handler(CommandHandler("temas", temas_command))
     application.add_handler(CommandHandler("kindle", kindle_command))
     application.add_handler(CommandHandler("perfil", perfil_command))
+    application.add_handler(CommandHandler("autorizar", autorizar_command))
+    application.add_handler(CommandHandler("amazon", autorizar_command))
+    application.add_handler(CommandHandler("whitelist", autorizar_command))
     application.add_handler(CommandHandler("idioma", idioma_command))
     application.add_handler(CommandHandler("buscar", buscar_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

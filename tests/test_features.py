@@ -269,5 +269,16 @@ class TestBotFeatures(unittest.TestCase):
         users.pop(str(test_uid), None)
         user_manager.save_users(users)
 
+    def test_amazon_whitelist_markup(self):
+        """Verify the 1-touch Amazon whitelist assistant generates proper links and instructions."""
+        from gabook.bot import build_amazon_whitelist_markup
+        from gabook.config import GMAIL_SENDER
+
+        text, markup = build_amazon_whitelist_markup()
+        self.assertIn("AUTORIZAR TU KINDLE EN AMAZON", text)
+        self.assertIn(GMAIL_SENDER, text)
+        self.assertIn("amazon.es", markup.inline_keyboard[0][0].url)
+        self.assertIn("amazon.com", markup.inline_keyboard[1][0].url)
+
 if __name__ == "__main__":
     unittest.main()
