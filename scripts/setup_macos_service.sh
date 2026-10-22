@@ -25,8 +25,14 @@ cat <<EOF > "$PLIST_PATH"
     <key>ProgramArguments</key>
     <array>
         <string>$PYTHON_EXEC</string>
+        <string>-u</string>
         <string>$PROJECT_DIR/main.py</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
     <key>WorkingDirectory</key>
     <string>$PROJECT_DIR</string>
     <key>RunAtLoad</key>
