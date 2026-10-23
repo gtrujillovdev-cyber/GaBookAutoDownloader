@@ -1146,6 +1146,16 @@ async def execute_book_send(
                 parse_mode=ParseMode.MARKDOWN
             )
 
+            file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+            if file_size_mb > 10:
+                await target_msg.edit_text(
+                    f"⚠️ *Libro demasiado grande* ({file_size_mb:.1f} MB)\n\n"
+                    "El límite para enviar por correo es 10 MB.\n"
+                    "Prueba con otro libro más ligero.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+
             sent = await loop.run_in_executor(None, send_to_kindle, filepath, book_title, target_email)
 
             if not sent:

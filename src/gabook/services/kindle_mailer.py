@@ -32,6 +32,12 @@ def send_to_kindle(filepath: str, book_title: Optional[str] = None, recipient_em
         logger.error(f"File {filepath} ({file_size / (1024*1024):.1f} MB) exceeds maximum allowed email size.")
         return False
 
+    # Mailjet API limit: 15 MB total payload; base64 adds ~33%, so cap raw file at 10 MB
+    _MAILJET_MAX_BYTES = 10 * 1024 * 1024
+    if file_size > _MAILJET_MAX_BYTES:
+        logger.error(f"File {filepath} ({file_size / (1024*1024):.1f} MB) exceeds Mailjet 10 MB limit.")
+        return False
+
     if not GMAIL_USER or not target_email:
         logger.error("Missing sender or recipient email.")
         return False
