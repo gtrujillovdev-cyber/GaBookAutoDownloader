@@ -474,7 +474,7 @@ def build_search_page_markup(session_id: str, page: int) -> Tuple[str, InlineKey
         )
 
         # Compact touch button
-        title_btn = b['title'][:32] + ("…" if len(b['title']) > 32 else "")
+        title_btn = b['title'][:55] + ("…" if len(b['title']) > 55 else "")
         keyboard.append([
             InlineKeyboardButton(f"👉 {num}. {title_btn}", callback_data=f"dl:{session_id}:{global_idx}")
         ])
