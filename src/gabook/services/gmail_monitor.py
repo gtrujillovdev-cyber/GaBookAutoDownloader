@@ -8,10 +8,30 @@ import email
 from email.header import decode_header
 import requests
 from bs4 import BeautifulSoup
+from email.utils import parseaddr
+from urllib.parse import urlparse
 from typing import Dict, Optional
 from gabook.config import GMAIL_USER, GMAIL_APP_PASSWORD, IMAP_TIMEOUT
 
 logger = logging.getLogger(__name__)
+
+_AMAZON_HOST_RE = re.compile(
+    r"(^|\.)amazon\.(com|es|co\.uk|de|fr|it|nl|pl|se|ca|com\.mx|com\.br|co\.jp|in|com\.au)$"
+)
+
+def _is_amazon_sender(from_header: str) -> bool:
+    """True if the From address belongs to an Amazon domain (header-level check)."""
+    addr = parseaddr(from_header or "")[1].lower()
+    domain = addr.rsplit("@", 1)[-1] if "@" in addr else ""
+    return bool(_AMAZON_HOST_RE.search(domain))
+
+def _is_trusted_amazon_url(url: str) -> bool:
+    """Only https links on Amazon domains may be opened automatically."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and bool(_AMAZON_HOST_RE.search((parsed.hostname or "").lower()))
 
 def clean_subject(raw_subject: str) -> str:
     """Decodes email subject headers."""
@@ -46,6 +66,9 @@ def verify_amazon_link(url: str) -> bool:
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     clean_url = html.unescape(url.strip())
+    if not _is_trusted_amazon_url(clean_url):
+        logger.warning("Refusing to open non-Amazon verification link.")
+        return False
     try:
         resp = requests.get(clean_url, headers=headers, timeout=15, allow_redirects=True)
         logger.info(f"Amazon verification request status: {resp.status_code}")
@@ -111,6 +134,10 @@ def monitor_kindle_delivery(timeout_seconds: int = 75, poll_interval: int = 5) -
                     from_header = msg.get("From", "").lower()
                     body = extract_email_body(msg)
 
+                    if not _is_amazon_sender(from_header):
+                        logger.warning(f"Ignoring email with non-Amazon sender: {from_header!r}")
+                        continue
+
                     logger.info(f"📬 Correo de Amazon detectado: '{subject}' de {from_header}")
 
                     # Check if it's a verification request
@@ -134,6 +161,10 @@ def monitor_kindle_delivery(timeout_seconds: int = 75, poll_interval: int = 5) -
                             matches = re.findall(r'https://[^\s<>"]+(?:sendtokindle|verification|confirm|verify|gp/f\.html)[^\s<>"]*', body)
                             if matches:
                                 verify_url = matches[0]
+
+                        if verify_url and not _is_trusted_amazon_url(html.unescape(verify_url.strip())):
+                            logger.warning("Verification link is not on an Amazon domain; ignoring it.")
+                            verify_url = None
 
                         if verify_url:
                             verify_url = html.unescape(verify_url.strip())

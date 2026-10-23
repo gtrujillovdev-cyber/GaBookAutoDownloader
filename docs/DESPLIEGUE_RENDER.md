@@ -89,3 +89,11 @@ launchctl unload ~/Library/LaunchAgents/com.gabookautodownloader.plist
 ```
 
 *(Si algún día quieres volver a correrlo en tu Mac, solo ejecutas `launchctl load ~/Library/LaunchAgents/com.gabookautodownloader.plist`).*
+
+---
+
+## ⚠️ Notas importantes de producción
+
+* **Disco efímero:** en el plan Free de Render el sistema de archivos se borra en cada despliegue o reinicio, así que `users.json` (perfiles, historial, espacio del Kindle) **se pierde**. Para conservarlo usa un disco persistente (plan de pago) apuntando `USERS_FILE` a esa ruta, o una base de datos externa.
+* **Acceso restringido:** define `ALLOWED_USER_IDS` (IDs de Telegram separados por comas) en las variables de entorno de Render. Si está vacío, cualquiera que encuentre el bot puede usar tu cuenta de Gmail para enviar libros.
+* **Una sola instancia:** no ejecutes el bot en local mientras Render esté activo (error `Conflict 409`).

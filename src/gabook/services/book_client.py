@@ -6,7 +6,8 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
-from gabook.config import HEADERS, LANG_MAP, DOWNLOADS_DIR
+from urllib.parse import urljoin, urlparse, quote
+from gabook.config import HEADERS, LANG_MAP, DOWNLOADS_DIR, MAX_DOWNLOAD_BYTES
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,7 @@ def fetch_libgen_page(base_url: str, query: str, page: int) -> List[Dict]:
                 "lang": lang,
                 "size": size,
                 "mirrors": mirror_links,
+                "base": f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}",
                 "source": "libgen"
             })
     except Exception:
@@ -388,77 +390,117 @@ def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] =
 
     return matching_books[:max_results], other_books[:max_results]
 
+EPUB_MAGIC = b"PK\x03\x04"  # EPUB files are ZIP containers
+
+def _safe_remove(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+def _stream_to_file(url: str, filepath: str, timeout: int = 30) -> bool:
+    """
+    Streams `url` to `filepath` with a hard size cap and validates that the payload is really
+    an EPUB (ZIP) and not an HTML error page. Returns True on success; cleans up on failure.
+    """
+    try:
+        with requests.get(url, headers=HEADERS, timeout=timeout, stream=True) as resp:
+            resp.raise_for_status()
+            declared = resp.headers.get("Content-Length", "")
+            if declared.isdigit() and int(declared) > MAX_DOWNLOAD_BYTES:
+                logger.warning(f"Download refused (declared {declared} bytes > cap): {url}")
+                return False
+            written = 0
+            with open(filepath, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=32768):
+                    if not chunk:
+                        continue
+                    written += len(chunk)
+                    if written > MAX_DOWNLOAD_BYTES:
+                        raise ValueError("download exceeded size cap")
+                    f.write(chunk)
+        with open(filepath, "rb") as f:
+            head = f.read(4)
+        if written < 1024 or head != EPUB_MAGIC:
+            logger.warning(f"Downloaded payload is not a valid EPUB ({written} bytes) from {url}")
+            _safe_remove(filepath)
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"Download from {url} failed: {e}")
+        _safe_remove(filepath)
+        return False
+
+def _resolve_archive_epub_url(ident: str) -> Optional[str]:
+    """Looks up the real EPUB file name of an Internet Archive item (it is often not <id>.epub)."""
+    try:
+        r = requests.get(f"https://archive.org/metadata/{quote(ident)}", headers=HEADERS, timeout=10)
+        if r.status_code != 200:
+            return None
+        files = r.json().get("files", [])
+        epubs = [f for f in files if str(f.get("name", "")).lower().endswith(".epub")]
+        if not epubs:
+            return None
+        epubs.sort(key=lambda f: (f.get("format") != "EPUB", f.get("source") != "original"))
+        return f"https://archive.org/download/{quote(ident)}/{quote(epubs[0]['name'])}"
+    except Exception as e:
+        logger.warning(f"Archive.org metadata lookup failed for {ident}: {e}")
+        return None
+
+def _libgen_download_candidates(book: Dict) -> List[str]:
+    """Collects candidate direct-download URLs from every Libgen mirror page of a book."""
+    base = book.get("base") or "https://libgen.li"
+    candidates: List[str] = []
+    for mirror in book.get("mirrors", []):
+        mirror_url = urljoin(base + "/", mirror)
+        try:
+            m_resp = requests.get(mirror_url, headers=HEADERS, timeout=10)
+            if m_resp.status_code != 200:
+                continue
+            m_soup = BeautifulSoup(m_resp.text, "html.parser")
+            get_btn = m_soup.find("a", string=lambda t: t and "get" in t.lower())
+            if not get_btn:
+                get_btn = m_soup.find("a", href=lambda h: h and "get.php" in h)
+            if get_btn and get_btn.get("href"):
+                url = urljoin(mirror_url, get_btn["href"])
+                if url not in candidates:
+                    candidates.append(url)
+        except Exception as e:
+            logger.warning(f"Libgen mirror {mirror_url} failed: {e}")
+    return candidates
+
 def download_epub(book: Dict, output_dir: Optional[str] = None) -> Optional[str]:
     """
-    Downloads EPUB from direct URL or mirrors and saves locally.
-    Uses safe collision-resistant temporary filenames.
+    Downloads an EPUB from a direct URL or Libgen mirrors and saves it locally with a
+    collision-resistant temporary filename. Returns the file path, or None on failure.
     """
     target_dir = output_dir or DOWNLOADS_DIR
     os.makedirs(target_dir, exist_ok=True)
     safe_title = clean_filename(book.get('title', 'libro')[:45]) or "libro"
-    suffix = uuid.uuid4().hex[:6]
-    filename = f"{safe_title}_{suffix}.epub"
-    filepath = os.path.join(target_dir, filename)
+    filepath = os.path.join(target_dir, f"{safe_title}_{uuid.uuid4().hex[:6]}.epub")
 
-    # 1. Direct download (Archive.org or Gutenberg)
-    if book.get("direct_url"):
-        try:
-            logger.info(f"Downloading from direct source: {book['direct_url']}...")
-            resp = requests.get(book["direct_url"], headers=HEADERS, timeout=25, stream=True)
-            resp.raise_for_status()
-            with open(filepath, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=32768):
-                    if chunk:
-                        f.write(chunk)
-            if os.path.exists(filepath) and os.path.getsize(filepath) > 1024:
-                return filepath
-        except Exception as e:
-            logger.warning(f"Direct download failed: {e}")
-
-    # 2. Mirror download (Libgen)
-    mirrors = book.get("mirrors", [])
-    download_url = None
-    for mirror in mirrors:
-        if not mirror.startswith("http"):
-            mirror = "https://libgen.li/" + mirror.lstrip("/")
-
-        try:
-            m_resp = requests.get(mirror, headers=HEADERS, timeout=10)
-            if m_resp.status_code == 200:
-                m_soup = BeautifulSoup(m_resp.text, "html.parser")
-                get_btn = m_soup.find("a", string=lambda s: s and "get" in s.lower())
-                if not get_btn:
-                    get_btn = m_soup.find("a", href=lambda h: h and "get.php" in h)
-
-                if get_btn and get_btn.get("href"):
-                    dl = get_btn.get("href")
-                    if not dl.startswith("http"):
-                        dl = "https://libgen.li/" + dl.lstrip("/")
-                    download_url = dl
-                    break
-        except Exception:
-            continue
-
-    if not download_url:
-        return None
-
-    try:
-        logger.info(f"Downloading from Libgen: {download_url}...")
-        resp = requests.get(download_url, headers=HEADERS, timeout=30, stream=True)
-        resp.raise_for_status()
-        with open(filepath, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=32768):
-                if chunk:
-                    f.write(chunk)
-
-        if os.path.exists(filepath) and os.path.getsize(filepath) > 1024:
+    # 1. Direct download (Archive.org / OpenLibrary / Gutenberg)
+    direct = book.get("direct_url")
+    if direct:
+        logger.info(f"Downloading from direct source: {direct}")
+        if _stream_to_file(direct, filepath, timeout=25):
             return filepath
-        else:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return None
-    except Exception as e:
-        logger.error(f"Download failed: {e}")
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        return None
+        m = re.search(r"archive\.org/download/([^/]+)/", direct)
+        if m:
+            real_url = _resolve_archive_epub_url(m.group(1))
+            if real_url and real_url != direct:
+                logger.info(f"Retrying with resolved Archive.org file: {real_url}")
+                if _stream_to_file(real_url, filepath, timeout=25):
+                    return filepath
+            else:
+                logger.warning(f"Archive.org item {m.group(1)} has no downloadable EPUB (may be lending-only).")
+
+    # 2. Libgen mirrors: try every candidate link until one yields a valid EPUB
+    for url in _libgen_download_candidates(book):
+        logger.info(f"Downloading from Libgen: {url}")
+        if _stream_to_file(url, filepath, timeout=30):
+            return filepath
+
+    logger.error(f"All download sources failed for '{book.get('title', '?')}' ({book.get('source', '?')})")
+    return None

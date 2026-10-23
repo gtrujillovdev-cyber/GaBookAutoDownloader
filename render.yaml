@@ -26,3 +26,5 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: ALLOWED_USER_IDS
+        sync: false

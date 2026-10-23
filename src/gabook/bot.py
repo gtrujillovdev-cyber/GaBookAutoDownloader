@@ -15,13 +15,15 @@ from telegram import (
     LinkPreviewOptions
 )
 from telegram.constants import ParseMode, ChatAction
-from telegram.error import BadRequest
+from telegram.error import BadRequest, Conflict
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    TypeHandler,
+    ApplicationHandlerStop,
     filters
 )
 
@@ -38,6 +40,8 @@ from gabook.config import (
     DOWNLOADS_DIR,
     SESSION_TTL_SECONDS,
     MAX_ACTIVE_SESSIONS,
+    MAX_ATTACHMENT_BYTES,
+    ALLOWED_USER_IDS,
     PORT
 )
 from gabook.services.health_server import start_health_server
@@ -926,6 +930,28 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # Treat any other text as an automatic book search query
     await handle_search(update, context, query)
 
+def transcribe_audio(path: str, groq_key: Optional[str], openai_key: Optional[str]) -> Optional[str]:
+    """Blocking speech-to-text call (Groq Whisper preferred, OpenAI fallback). Run it in an executor."""
+    import requests
+    if groq_key:
+        url, key, model, timeout = "https://api.groq.com/openai/v1/audio/transcriptions", groq_key, "whisper-large-v3-turbo", 12
+    elif openai_key:
+        url, key, model, timeout = "https://api.openai.com/v1/audio/transcriptions", openai_key, "whisper-1", 15
+    else:
+        return None
+    with open(path, "rb") as f:
+        r = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {key}"},
+            files={"file": (os.path.basename(path), f, "audio/ogg")},
+            data={"model": model, "language": "es"},
+            timeout=timeout
+        )
+    if r.status_code == 200:
+        return r.json().get("text", "").strip() or None
+    logger.warning(f"Transcription API returned HTTP {r.status_code}")
+    return None
+
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles audio voice notes from users and transcribes or guides them seamlessly."""
     user = update.effective_user
@@ -946,35 +972,12 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     status_msg = await update.message.reply_text("🎙️ _Escuchando tu audio y transcribiendo el título..._", parse_mode=ParseMode.MARKDOWN)
     voice_file = await context.bot.get_file(update.message.voice.file_id)
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
     temp_ogg = os.path.join(DOWNLOADS_DIR, f"voice_{uuid.uuid4().hex[:6]}.ogg")
     try:
         await voice_file.download_to_drive(temp_ogg)
-        transcribed_text = None
-
-        if groq_key:
-            import requests
-            with open(temp_ogg, "rb") as f:
-                r = requests.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {groq_key}"},
-                    files={"file": (os.path.basename(temp_ogg), f, "audio/ogg")},
-                    data={"model": "whisper-large-v3-turbo", "language": "es"},
-                    timeout=12
-                )
-                if r.status_code == 200:
-                    transcribed_text = r.json().get("text", "").strip()
-        elif openai_key:
-            import requests
-            with open(temp_ogg, "rb") as f:
-                r = requests.post(
-                    "https://api.openai.com/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {openai_key}"},
-                    files={"file": (os.path.basename(temp_ogg), f, "audio/ogg")},
-                    data={"model": "whisper-1", "language": "es"},
-                    timeout=15
-                )
-                if r.status_code == 200:
-                    transcribed_text = r.json().get("text", "").strip()
+        loop = asyncio.get_running_loop()
+        transcribed_text = await loop.run_in_executor(None, transcribe_audio, temp_ogg, groq_key, openai_key)
 
         if transcribed_text:
             clean_search = re.sub(r'^(busca|búscame|quiero leer|descarga|ponme|libro)\s+', '', transcribed_text, flags=re.IGNORECASE).strip()
@@ -1039,7 +1042,7 @@ async def execute_book_send(
     try:
         # Pre-flight check: File size limit (< 22 MB)
         file_size = os.path.getsize(filepath)
-        if file_size > 22 * 1024 * 1024:
+        if file_size > MAX_ATTACHMENT_BYTES:
             size_mb = file_size / (1024 * 1024)
             await target_msg.edit_text(
                 f"⚠️ *El archivo es demasiado grande ({size_mb:.1f} MB)*\n\n"
@@ -1787,6 +1790,12 @@ def cleanup_downloads_dir():
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error and ignore harmless Telegram BadRequest exceptions like 'Message is not modified'."""
+    if isinstance(context.error, Conflict):
+        logger.error(
+            "Telegram Conflict 409: another bot instance is polling with the same token. "
+            "Stop the other instance (local launchd daemon or Render) so only one runs."
+        )
+        return
     if isinstance(context.error, BadRequest):
         err_msg = str(context.error)
         if "Message is not modified" in err_msg or "Query is too old" in err_msg:
@@ -1809,6 +1818,23 @@ async def post_init_hook(app: Application) -> None:
     except Exception as e:
         logger.warning(f"No se pudo sincronizar la descripción del bot en Telegram: {e}")
 
+async def access_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Blocks every update from users outside ALLOWED_USER_IDS (when the allowlist is configured)."""
+    if not ALLOWED_USER_IDS:
+        return
+    user = update.effective_user
+    if user is not None and user.id in ALLOWED_USER_IDS:
+        return
+    logger.warning(f"Blocked update from unauthorized user id={getattr(user, 'id', None)}")
+    try:
+        if update.callback_query:
+            await update.callback_query.answer("Acceso restringido.", show_alert=True)
+        elif update.effective_message:
+            await update.effective_message.reply_text("🔒 Este bot es privado.")
+    except Exception:
+        pass
+    raise ApplicationHandlerStop
+
 def main():
     cleanup_downloads_dir()
     if PORT:
@@ -1818,9 +1844,13 @@ def main():
         print("❌ Error: TELEGRAM_BOT_TOKEN no configurado en .env")
         return
 
+    if not ALLOWED_USER_IDS:
+        logger.warning("ALLOWED_USER_IDS is empty: the bot is open to ANY Telegram user. "
+                       "Set ALLOWED_USER_IDS=id1,id2 to restrict access.")
     print("🚀 Iniciando GaBookAutoDownloaderBot (Family UX 2.0)...")
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init_hook).build()
 
+    application.add_handler(TypeHandler(Update, access_guard), group=-1)
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", guia_command))
     application.add_handler(CommandHandler("ayuda", guia_command))

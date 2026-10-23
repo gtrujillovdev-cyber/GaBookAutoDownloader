@@ -1,7 +1,11 @@
 import os
 import json
+import time
+import shutil
 import tempfile
 import logging
+import threading
+import functools
 from typing import Dict, Optional
 from datetime import datetime
 from gabook.config import (
@@ -14,18 +18,38 @@ from gabook.config import (
 
 logger = logging.getLogger(__name__)
 
+# Serializes read-modify-write cycles on USERS_FILE (handlers run in several threads).
+_USERS_LOCK = threading.RLock()
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _USERS_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
+
 def load_users() -> Dict[str, dict]:
     """Loads all registered users from USERS_FILE."""
     if not os.path.exists(USERS_FILE):
         return {}
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("users file root must be a JSON object")
+        return data
     except Exception as e:
         logger.error(f"Error loading {USERS_FILE}: {e}")
+        # Keep a copy of the unreadable file so the next save cannot silently destroy it.
+        try:
+            backup = f"{USERS_FILE}.corrupt-{int(time.time())}"
+            shutil.copy2(USERS_FILE, backup)
+            logger.error(f"Corrupt users file preserved at {backup}")
+        except Exception as be:
+            logger.error(f"Could not back up corrupt users file: {be}")
         return {}
 
-def save_users(users: Dict[str, dict]):
+def save_users(users: Dict[str, dict]) -> bool:
     """Saves users dictionary to USERS_FILE atomically to prevent file corruption."""
     dir_name = os.path.dirname(USERS_FILE) or "."
     temp_name = None
@@ -34,6 +58,7 @@ def save_users(users: Dict[str, dict]):
             json.dump(users, tf, indent=2, ensure_ascii=False)
             temp_name = tf.name
         os.replace(temp_name, USERS_FILE)
+        return True
     except Exception as e:
         logger.error(f"Error saving {USERS_FILE}: {e}")
         if temp_name and os.path.exists(temp_name):
@@ -41,6 +66,7 @@ def save_users(users: Dict[str, dict]):
                 os.remove(temp_name)
             except OSError:
                 pass
+        return False
 
 def get_user_data(user_id: int) -> dict:
     """Retrieves configuration for a specific Telegram user with safe defaults."""
@@ -62,6 +88,7 @@ def get_user_data(user_id: int) -> dict:
         "created_at": raw.get("created_at")
     }
 
+@_locked
 def set_kindle_email(user_id: int, email: str, name: Optional[str] = None) -> bool:
     """Sets or updates the user's Kindle email address."""
     users = load_users()
@@ -84,9 +111,9 @@ def set_kindle_email(user_id: int, email: str, name: Optional[str] = None) -> bo
         users[key]["kindle_email"] = email.strip().lower()
         if name:
             users[key]["name"] = name
-    save_users(users)
-    return True
+    return save_users(users)
 
+@_locked
 def set_personal_email(user_id: int, email: Optional[str]) -> bool:
     """Sets or updates the user's personal regular email address."""
     users = load_users()
@@ -108,9 +135,9 @@ def set_personal_email(user_id: int, email: Optional[str]) -> bool:
         }
     else:
         users[key]["personal_email"] = cleaned
-    save_users(users)
-    return True
+    return save_users(users)
 
+@_locked
 def set_kindle_model(user_id: int, model_key: str) -> bool:
     """Updates user's Kindle model profile and adjusts total capacity."""
     if model_key not in KINDLE_MODELS:
@@ -138,9 +165,9 @@ def set_kindle_model(user_id: int, model_key: str) -> bool:
         # Ensure used space doesn't exceed new capacity
         current_used = float(users[key].get("storage_used_mb", 0.0))
         users[key]["storage_used_mb"] = min(current_used, model["total_mb"])
-    save_users(users)
-    return True
+    return save_users(users)
 
+@_locked
 def set_kindle_free_space(user_id: int, free_mb: float) -> bool:
     """Calibrates Kindle remaining free space reported or selected by user."""
     users = load_users()
@@ -165,9 +192,9 @@ def set_kindle_free_space(user_id: int, free_mb: float) -> bool:
         total_mb = float(users[key].get("storage_total_mb", DEFAULT_STORAGE_TOTAL_MB))
         used_mb = max(0.0, total_mb - free_mb)
         users[key]["storage_used_mb"] = used_mb
-    save_users(users)
-    return True
+    return save_users(users)
 
+@_locked
 def record_book_sent(
     user_id: int,
     size_bytes: int,
@@ -261,6 +288,7 @@ def get_kindle_storage_info(user_id: int) -> dict:
         "is_low": is_low
     }
 
+@_locked
 def set_user_lang(user_id: int, lang: Optional[str]) -> bool:
     """Sets or updates the user's default language."""
     users = load_users()
@@ -281,5 +309,4 @@ def set_user_lang(user_id: int, lang: Optional[str]) -> bool:
         }
     else:
         users[key]["lang"] = lang
-    save_users(users)
-    return True
+    return save_users(users)

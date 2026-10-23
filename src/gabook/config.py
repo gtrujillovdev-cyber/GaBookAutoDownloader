@@ -127,3 +127,17 @@ LANG_MAP = {
     "all": None,
     "any": None
 }
+
+# Access control: comma-separated Telegram user IDs allowed to use the bot.
+# Empty = open to everyone (a warning is logged at startup).
+ALLOWED_USER_IDS = {
+    int(x) for x in os.getenv("ALLOWED_USER_IDS", "").replace(" ", "").split(",")
+    if x.strip().lstrip("-").isdigit()
+}
+
+# Hard cap while downloading (bytes). Above MAX_ATTACHMENT_BYTES the bot shows a friendly
+# "too big" message; above this cap the download is aborted to protect disk and bandwidth.
+MAX_DOWNLOAD_BYTES = 60 * 1024 * 1024
+
+# Expose the Gmail sender in the public /health payload only if explicitly enabled.
+EXPOSE_HEALTH_SENDER = os.getenv("HEALTH_SHOW_SENDER", "").strip().lower() in ("1", "true", "yes")

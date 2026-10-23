@@ -5,6 +5,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
+# Isolate tests from real data: never touch the real users.json or downloads/ folder.
+import tempfile
+_TEST_TMP = tempfile.mkdtemp(prefix="gabook_tests_")
+os.environ["USERS_FILE"] = os.path.join(_TEST_TMP, "users.json")
+os.environ["DOWNLOADS_DIR"] = os.path.join(_TEST_TMP, "downloads")
+
 # Add src to sys.path so tests can run cleanly from any directory
 SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 sys.path.insert(0, str(SRC_DIR))
@@ -744,6 +750,149 @@ class TestBotFeatures(unittest.TestCase):
         env_example_text = env_example_path.read_text(encoding="utf-8")
         self.assertIn("tu_token_de_telegram_aqui", env_example_text)
         self.assertIn("tu_correo@gmail.com", env_example_text)
+
+
+
+class TestHardening(unittest.TestCase):
+    """Regression tests for the security / robustness fixes."""
+
+    def _fake_response(self, chunks, headers=None, status=200):
+        resp = MagicMock()
+        resp.status_code = status
+        resp.headers = headers or {}
+        resp.raise_for_status = MagicMock()
+        resp.iter_content.return_value = iter(chunks)
+        resp.__enter__ = MagicMock(return_value=resp)
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    def test_stream_rejects_html_error_page(self):
+        from gabook.services import book_client
+        path = os.path.join(_TEST_TMP, "fake.epub")
+        with patch("gabook.services.book_client.requests.get",
+                   return_value=self._fake_response([b"<html>" + b"x" * 4000])):
+            self.assertFalse(book_client._stream_to_file("https://x.test/a.epub", path))
+        self.assertFalse(os.path.exists(path))
+
+    def test_stream_accepts_zip_payload(self):
+        from gabook.services import book_client
+        path = os.path.join(_TEST_TMP, "ok.epub")
+        with patch("gabook.services.book_client.requests.get",
+                   return_value=self._fake_response([b"PK\x03\x04" + b"0" * 4000])):
+            self.assertTrue(book_client._stream_to_file("https://x.test/a.epub", path))
+        self.assertTrue(os.path.exists(path))
+        os.remove(path)
+
+    def test_stream_enforces_size_cap(self):
+        from gabook.services import book_client
+        path = os.path.join(_TEST_TMP, "big.epub")
+        with patch.object(book_client, "MAX_DOWNLOAD_BYTES", 5000), \
+             patch("gabook.services.book_client.requests.get",
+                   return_value=self._fake_response([b"PK\x03\x04" + b"0" * 4000, b"0" * 4000])):
+            self.assertFalse(book_client._stream_to_file("https://x.test/a.epub", path))
+        self.assertFalse(os.path.exists(path))
+
+    def test_download_falls_back_to_archive_metadata(self):
+        from gabook.services import book_client
+        book = {"title": "Pueblos del pasado", "direct_url": "https://archive.org/download/pdp123/pdp123.epub"}
+        calls = []
+
+        def fake_stream(url, filepath, timeout=30):
+            calls.append(url)
+            if url.endswith("Pueblos%20del%20pasado.epub"):
+                with open(filepath, "wb") as f:
+                    f.write(b"PK\x03\x04" + b"0" * 2000)
+                return True
+            return False
+
+        meta = MagicMock(status_code=200)
+        meta.json.return_value = {"files": [{"name": "Pueblos del pasado.epub", "format": "EPUB", "source": "original"}]}
+        with patch.object(book_client, "_stream_to_file", side_effect=fake_stream), \
+             patch("gabook.services.book_client.requests.get", return_value=meta):
+            result = book_client.download_epub(book, output_dir=_TEST_TMP)
+        self.assertIsNotNone(result)
+        self.assertEqual(len(calls), 2)
+        os.remove(result)
+
+    def test_amazon_url_and_sender_validation(self):
+        from gabook.services.gmail_monitor import _is_trusted_amazon_url, _is_amazon_sender
+        self.assertTrue(_is_trusted_amazon_url("https://www.amazon.es/gp/f.html?verification=1"))
+        self.assertFalse(_is_trusted_amazon_url("http://www.amazon.es/x"))
+        self.assertFalse(_is_trusted_amazon_url("https://amazon.es.evil.com/x"))
+        self.assertFalse(_is_trusted_amazon_url("https://evil.com/amazon.es"))
+        self.assertTrue(_is_amazon_sender("Amazon <kindle-delivery@amazon.es>"))
+        self.assertFalse(_is_amazon_sender("Amazon <phish@amazon-support.xyz>"))
+
+    @patch("imaplib.IMAP4_SSL")
+    @patch("gabook.services.gmail_monitor.verify_amazon_link")
+    def test_monitor_ignores_spoofed_sender(self, mock_verify, mock_imap_cls):
+        from gabook.services.gmail_monitor import monitor_kindle_delivery
+        mock_mail = MagicMock()
+        mock_imap_cls.return_value = mock_mail
+        mock_mail.search.side_effect = [("OK", [b""]), ("OK", [b"303"]), ("OK", [b"303"]), ("OK", [b"303"])]
+        raw = (b"From: x@evil-amazon.example\r\nSubject: Verificar solicitud\r\n\r\n"
+               b"https://www.amazon.es/gp/f.html?verification=abc\r\n")
+        mock_mail.fetch.return_value = ("OK", [(b"303 (RFC822 {1}", raw)])
+        with patch("gabook.services.gmail_monitor.GMAIL_USER", "u@gmail.com"), \
+             patch("gabook.services.gmail_monitor.GMAIL_APP_PASSWORD", "p"):
+            result = monitor_kindle_delivery(timeout_seconds=1, poll_interval=0.1)
+        mock_verify.assert_not_called()
+        self.assertEqual(result["status"], "delivered_silent")
+
+    def test_corrupt_users_file_is_backed_up(self):
+        path = os.path.join(_TEST_TMP, "corrupt_users.json")
+        with open(path, "w") as f:
+            f.write("{not json")
+        with patch.object(user_manager, "USERS_FILE", path):
+            self.assertEqual(user_manager.load_users(), {})
+        backups = [n for n in os.listdir(_TEST_TMP) if n.startswith("corrupt_users.json.corrupt-")]
+        self.assertEqual(len(backups), 1)
+
+    def test_concurrent_updates_are_not_lost(self):
+        import threading
+        path = os.path.join(_TEST_TMP, "concurrent_users.json")
+        with patch.object(user_manager, "USERS_FILE", path):
+            threads = [threading.Thread(target=user_manager.record_book_sent, args=(424242, 1024))
+                       for _ in range(20)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            self.assertEqual(user_manager.get_user_data(424242)["books_sent_count"], 20)
+
+    def test_access_guard_blocks_unauthorized_users(self):
+        import asyncio
+        from telegram.ext import ApplicationHandlerStop
+        from gabook import bot as botmod
+
+        update = MagicMock()
+        update.effective_user.id = 111
+        update.callback_query = None
+        update.effective_message.reply_text = AsyncMock()
+
+        async def run():
+            with patch.object(botmod, "ALLOWED_USER_IDS", {222}):
+                with self.assertRaises(ApplicationHandlerStop):
+                    await botmod.access_guard(update, MagicMock())
+            with patch.object(botmod, "ALLOWED_USER_IDS", {111}):
+                await botmod.access_guard(update, MagicMock())  # allowed: no exception
+            with patch.object(botmod, "ALLOWED_USER_IDS", set()):
+                await botmod.access_guard(update, MagicMock())  # open mode
+
+        asyncio.run(run())
+
+    def test_health_hides_sender_by_default(self):
+        import io
+        from gabook.services.health_server import HealthCheckHandler
+        handler = HealthCheckHandler.__new__(HealthCheckHandler)
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        with patch("gabook.config.EXPOSE_HEALTH_SENDER", False):
+            handler.do_GET()
+        self.assertNotIn("sender_email", json.loads(handler.wfile.getvalue().decode()))
+
 
 if __name__ == "__main__":
     unittest.main()
