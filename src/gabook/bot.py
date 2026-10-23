@@ -64,7 +64,8 @@ from gabook.services.user_manager import (
     record_book_sent,
     get_kindle_storage_info,
     get_user_history,
-    set_user_lang
+    set_user_lang,
+    set_amazon_authorized
 )
 
 logging.basicConfig(
@@ -81,6 +82,36 @@ def escape_md(text: Optional[str]) -> str:
     if not text:
         return ""
     return re.sub(r'([_*`\[])', r'\\\1', str(text))
+
+_PROGRESS_FRAMES = [
+    "▓░░░░░░░░░",
+    "▓▓░░░░░░░░",
+    "▓▓▓░░░░░░░",
+    "▓▓▓▓░░░░░░",
+    "▓▓▓▓▓░░░░░",
+    "▓▓▓▓▓▓░░░░",
+    "▓▓▓▓▓▓▓░░░",
+    "▓▓▓▓▓▓▓▓░░",
+    "▓▓▓▓▓▓▓▓▓░",
+    "▓▓▓▓▓▓▓▓▓▓",
+]
+
+async def _animate_download(msg, title_md: str, author_md: str, stop_event: asyncio.Event):
+    """Animates a progress bar on msg while stop_event is not set."""
+    frame = 0
+    while not stop_event.is_set():
+        bar = _PROGRESS_FRAMES[frame % len(_PROGRESS_FRAMES)]
+        pct = (frame % len(_PROGRESS_FRAMES) + 1) * 10
+        try:
+            await msg.edit_text(
+                f"📥 *Descargando...*  `[{bar}] {pct}%`\n\n"
+                f"📖 *{title_md}* — _{author_md}_",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception:
+            pass
+        frame += 1
+        await asyncio.sleep(1.5)
 
 def cleanup_expired_sessions():
     """Removes search sessions older than SESSION_TTL_SECONDS to avoid RAM bloat over time."""
@@ -591,18 +622,25 @@ async def kindle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         set_kindle_email(user_id, email_input, user.first_name)
-        whitelist_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛡️ Autorizar Bot en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
-            [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]
-        ])
-        await update.message.reply_text(
-            f"✅ *Kindle configurado con éxito:* `{email_input}`\n\n"
-            f"💡 *Paso importante:* Para que Amazon permita la entrega en tu Kindle, "
-            f"debes autorizar `{GMAIL_SENDER}` en tu cuenta de Amazon.\n\n"
-            "Toca el botón abajo para hacerlo fácilmente en 15 segundos:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=whitelist_kb
-        )
+        user_data_upd = get_user_data(user_id)
+        if user_data_upd.get("amazon_authorized"):
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]])
+            await update.message.reply_text(
+                f"✅ *Kindle actualizado:* `{email_input}`",
+                parse_mode=ParseMode.MARKDOWN, reply_markup=kb
+            )
+        else:
+            whitelist_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🛡️ Autorizar Bot en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
+                [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]
+            ])
+            await update.message.reply_text(
+                f"✅ *Kindle configurado con éxito:* `{email_input}`\n\n"
+                f"💡 *Paso importante:* Para que Amazon permita la entrega en tu Kindle, "
+                f"debes autorizar `{GMAIL_SENDER}` en tu cuenta de Amazon.\n\n"
+                "Toca el botón abajo para hacerlo fácilmente en 15 segundos:",
+                parse_mode=ParseMode.MARKDOWN, reply_markup=whitelist_kb
+            )
         return
 
     text, reply_markup = build_profile_markup(user_id)
@@ -866,18 +904,25 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         set_kindle_email(user_id, query.lower(), user.first_name)
-        whitelist_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛡️ Autorizar Bot en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
-            [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]
-        ])
-        await update.message.reply_text(
-            f"🎉 *¡Kindle configurado con éxito:* `{query.lower()}`\n\n"
-            f"💡 *Paso imprescindible:* Para que Amazon acepte los libros que pidas, "
-            f"debes autorizar `{GMAIL_SENDER}` en tu cuenta de Amazon.\n\n"
-            "Toca abajo para autorizarlo en 15 segundos:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=whitelist_kb
-        )
+        user_data_upd = get_user_data(user_id)
+        if user_data_upd.get("amazon_authorized"):
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]])
+            await update.message.reply_text(
+                f"🎉 *¡Kindle actualizado:* `{query.lower()}`",
+                parse_mode=ParseMode.MARKDOWN, reply_markup=kb
+            )
+        else:
+            whitelist_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🛡️ Autorizar Bot en Amazon (15 seg)", callback_data="menu:amazon_whitelist")],
+                [InlineKeyboardButton("🔍 Buscar un libro", callback_data="action:new_search")]
+            ])
+            await update.message.reply_text(
+                f"🎉 *¡Kindle configurado con éxito:* `{query.lower()}`\n\n"
+                f"💡 *Paso imprescindible:* Para que Amazon acepte los libros que pidas, "
+                f"debes autorizar `{GMAIL_SENDER}` en tu cuenta de Amazon.\n\n"
+                "Toca abajo para autorizarlo en 15 segundos:",
+                parse_mode=ParseMode.MARKDOWN, reply_markup=whitelist_kb
+            )
         return
 
     q_lower = query.lower()
@@ -1020,16 +1065,16 @@ async def execute_book_send(
     total_steps = 3 if is_kindle else 2
     dots = ["●○○", "●●○", "●●●"]
 
-    # Step 1: Download
-    await target_msg.edit_text(
-        f"📥 *Descargando libro...*  {dots[0]}\n\n"
-        f"📖 *{title_md}* — _{author_md}_\n"
-        f"📦 {escape_md(selected_book['size'])}  ·  {escape_md(selected_book['lang'])}",
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Step 1: Download with animated progress bar
+    stop_animation = asyncio.Event()
+    anim_task = asyncio.create_task(_animate_download(target_msg, title_md, author_md, stop_animation))
 
     loop = asyncio.get_running_loop()
-    filepath = await loop.run_in_executor(None, download_epub, selected_book, DOWNLOADS_DIR)
+    try:
+        filepath = await loop.run_in_executor(None, download_epub, selected_book, DOWNLOADS_DIR)
+    finally:
+        stop_animation.set()
+        await asyncio.gather(anim_task, return_exceptions=True)
 
     if not filepath or not os.path.exists(filepath):
         await target_msg.edit_text(
@@ -1306,6 +1351,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "menu:amazon_whitelist":
+        set_amazon_authorized(user_id)
         text, reply_markup = build_amazon_whitelist_markup()
         await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         return

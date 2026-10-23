@@ -120,6 +120,7 @@ def get_user_data(user_id: int) -> dict:
         "storage_total_mb": float(raw.get("storage_total_mb", DEFAULT_STORAGE_TOTAL_MB)),
         "storage_used_mb": float(raw.get("storage_used_mb", 0.0)),
         "books_sent_count": int(raw.get("books_sent_count", 0)),
+        "amazon_authorized": bool(raw.get("amazon_authorized", False)),
         "created_at": raw.get("created_at")
     }
 
@@ -322,6 +323,16 @@ def get_kindle_storage_info(user_id: int) -> dict:
         "used_display": used_display,
         "is_low": is_low
     }
+
+@_locked
+def set_amazon_authorized(user_id: int) -> bool:
+    """Marks that the user has completed the Amazon email whitelist authorization."""
+    users = load_users()
+    key = str(user_id)
+    if key not in users:
+        return False
+    users[key]["amazon_authorized"] = True
+    return save_users(users)
 
 @_locked
 def set_user_lang(user_id: int, lang: Optional[str]) -> bool:
