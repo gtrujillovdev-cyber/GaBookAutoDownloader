@@ -98,10 +98,12 @@ _PROGRESS_FRAMES = [
 
 async def _animate_download(msg, title_md: str, author_md: str, stop_event: asyncio.Event):
     """Animates a progress bar on msg while stop_event is not set."""
+    max_frame = len(_PROGRESS_FRAMES) - 1
     frame = 0
     while not stop_event.is_set():
-        bar = _PROGRESS_FRAMES[frame % len(_PROGRESS_FRAMES)]
-        pct = (frame % len(_PROGRESS_FRAMES) + 1) * 10
+        idx = min(frame, max_frame)
+        bar = _PROGRESS_FRAMES[idx]
+        pct = (idx + 1) * 10
         try:
             await msg.edit_text(
                 f"📥 *Descargando...*  `[{bar}] {pct}%`\n\n"
@@ -110,7 +112,8 @@ async def _animate_download(msg, title_md: str, author_md: str, stop_event: asyn
             )
         except Exception:
             pass
-        frame += 1
+        if frame < max_frame:
+            frame += 1
         await asyncio.sleep(1.5)
 
 def cleanup_expired_sessions():
