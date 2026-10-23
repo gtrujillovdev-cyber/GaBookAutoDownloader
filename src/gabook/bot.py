@@ -244,8 +244,8 @@ def build_amazon_whitelist_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "Amazon requiere que autorices el correo del bot para entregarte libros sin cables:\n\n"
         "1️⃣ *Copia el correo del bot* (toca para copiar):\n"
         f"`{GMAIL_SENDER}`\n\n"
-        "2️⃣ Toca el botón de abajo para abrir Amazon en la pestaña **Preferencias**.\n"
-        "3️⃣ Desliza hasta **abajo del todo** a la sección *'Configuración de documentos personales'*.\n"
+        "2️⃣ Toca el botón de abajo para abrir Amazon en la pestaña *Preferencias*.\n"
+        "3️⃣ Desliza hasta *abajo del todo* a la sección *'Configuración de documentos personales'*.\n"
         "4️⃣ En *'Lista de direcciones de correo electrónico autorizadas para el envío de documentos personales'*, "
         "pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
         "✅ ¡Listo! Ya podrás recibir cualquier libro con 1 toque."
@@ -287,7 +287,7 @@ def build_tutorial_mobile_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "¡Excelente! No necesitas configurar nada ni autorizar correos.\n\n"
         "1️⃣ Escribe el libro o autor en el chat (o envía un audio 🎙️).\n"
         "2️⃣ Toca el libro en la lista de resultados.\n"
-        "3️⃣ Pulsa **'📥 Descargar en Telegram'**.\n\n"
+        "3️⃣ Pulsa *'📥 Descargar en Telegram'*.\n\n"
         "El archivo `.epub` se descargará al instante en este chat para leerlo en Apple Books, Google Play Libros o tu app favorita.\n\n"
         "¿Qué deseas hacer ahora?"
     )
@@ -305,11 +305,11 @@ def build_tutorial_kindle_step1_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "📖 *TUTORIAL KINDLE (Paso 1 de 2)*\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🛡️ *Autorizar el Bot en Amazon*\n\n"
-        "Amazon requiere que autorices el correo del bot para entregarte libros sin cables (solo se hace **1 vez**):\n\n"
+        "Amazon requiere que autorices el correo del bot para entregarte libros sin cables (solo se hace *1 vez*):\n\n"
         "1️⃣ *Copia este correo del bot* (toca para copiar):\n"
         f"`{GMAIL_SENDER}`\n\n"
-        "2️⃣ Pulsa el botón de abajo para abrir Amazon (se abrirá en **Preferencias**).\n"
-        "3️⃣ Desliza hasta **abajo del todo** a la sección *'Configuración de documentos personales'*.\n"
+        "2️⃣ Pulsa el botón de abajo para abrir Amazon (se abrirá en *Preferencias*).\n"
+        "3️⃣ Desliza hasta *abajo del todo* a la sección *'Configuración de documentos personales'*.\n"
         "4️⃣ En *'Lista de direcciones autorizadas'*, pulsa en *'Añadir una nueva dirección'*, pega el correo copiado y pulsa Guardar.\n\n"
         "👇 Cuando lo hayas añadido en Amazon, pulsa en Continuar:"
     )
@@ -328,7 +328,7 @@ def build_tutorial_kindle_step2_markup() -> Tuple[str, InlineKeyboardMarkup]:
         "━━━━━━━━━━━━━━━━━━━━\n"
         "📱 *Vincular tu dispositivo*\n\n"
         "Ahora indica al bot qué lector Kindle recibirá tus libros:\n\n"
-        "• *Escribe tu dirección:* Toca en **Configurar mi @kindle.com**.\n\n"
+        "• *Escribe tu dirección:* Toca en *Configurar mi @kindle.com*.\n\n"
         "💡 *¿Dónde ver tu correo Kindle?*\n"
         "En tu Kindle físico: ve a *Ajustes ➔ Mi cuenta ➔ Correo Send to Kindle*."
     )
@@ -1496,7 +1496,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "action:new_search":
         await query.message.reply_text(
             "✨ *¡Listo para una nueva búsqueda!*\n\n"
-            "✍️ **Escribe directamente el nombre del libro** que quieras buscar:",
+            "✍️ *Escribe directamente el nombre del libro* que quieras buscar:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_KEYBOARD
         )
@@ -1683,7 +1683,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"({storage_info['percent_used']:.0f}% ocupado).\n\n"
                     f"El libro *{escape_md(b['title'])}* ocupa *~{book_size_mb:.1f} MB*.\n\n"
                     "Para evitar saturar la memoria o que Amazon falle al sincronizar:\n"
-                    "¿Prefieres enviarlo a tu **correo electrónico normal** o continuar al Kindle de todas formas?"
+                    "¿Prefieres enviarlo a tu *correo electrónico normal* o continuar al Kindle de todas formas?"
                 )
                 warning_keyboard = [
                     [InlineKeyboardButton("✉️ Enviar a mi Correo Normal", callback_data=f"send_choice:{session_id}:{idx}:personal")],

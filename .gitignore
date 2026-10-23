@@ -10,3 +10,5 @@ bot_stdout.log
 bot_stderr.log
 users.json
 
+
+.codegraph/
