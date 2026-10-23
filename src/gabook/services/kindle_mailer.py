@@ -91,6 +91,8 @@ def send_to_kindle(filepath: str, book_title: Optional[str] = None, recipient_em
             json=payload,
             timeout=30,
         )
+        if not resp.ok:
+            logger.error(f"Mailjet HTTP {resp.status_code}: {resp.text[:500]}")
         resp.raise_for_status()
         logger.info(f"Successfully sent '{clean_display_name}' to {target_email}")
         return True
