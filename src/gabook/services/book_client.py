@@ -562,13 +562,19 @@ def _safe_remove(path: str) -> None:
     except OSError:
         pass
 
+_DOWNLOAD_HEADERS = {
+    **HEADERS,
+    "Accept": "application/epub+zip, application/zip, application/octet-stream, */*",
+    "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+}
+
 def _stream_to_file(url: str, filepath: str, timeout: int = 30) -> bool:
     """
     Streams `url` to `filepath` with a hard size cap and validates that the payload is really
     an EPUB (ZIP) and not an HTML error page. Returns True on success; cleans up on failure.
     """
     try:
-        with requests.get(url, headers=HEADERS, timeout=timeout, stream=True) as resp:
+        with requests.get(url, headers=_DOWNLOAD_HEADERS, timeout=timeout, stream=True) as resp:
             resp.raise_for_status()
             declared = resp.headers.get("Content-Length", "")
             if declared.isdigit() and int(declared) > MAX_DOWNLOAD_BYTES:
@@ -615,6 +621,28 @@ def _libgen_download_candidates(book: Dict) -> List[str]:
     """Collects candidate direct-download URLs from every Libgen mirror page of a book."""
     base = book.get("base") or "https://libgen.li"
     candidates: List[str] = []
+
+    # Extract md5 from any mirror link to try library.lol (more reliable mirror)
+    md5 = None
+    for mirror in book.get("mirrors", []):
+        m = re.search(r'md5=([a-fA-F0-9]{32})', mirror, re.IGNORECASE)
+        if m:
+            md5 = m.group(1).lower()
+            break
+
+    if md5:
+        try:
+            lol_resp = requests.get(f"https://library.lol/main/{md5}", headers=HEADERS, timeout=10)
+            if lol_resp.status_code == 200:
+                lol_soup = BeautifulSoup(lol_resp.text, "html.parser")
+                dl_link = lol_soup.select_one("#download a") or lol_soup.find("a", href=lambda h: h and "get.php" in str(h))
+                if dl_link and dl_link.get("href"):
+                    lol_url = urljoin("https://library.lol/", dl_link["href"])
+                    if lol_url not in candidates:
+                        candidates.append(lol_url)
+        except Exception as e:
+            logger.warning(f"library.lol fallback failed for md5={md5}: {e}")
+
     for mirror in book.get("mirrors", []):
         mirror_url = urljoin(base + "/", mirror)
         try:
