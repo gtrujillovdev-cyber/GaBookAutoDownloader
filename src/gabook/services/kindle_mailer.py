@@ -1,4 +1,5 @@
 import os
+import socket
 import smtplib
 import logging
 from email.message import EmailMessage
@@ -69,13 +70,40 @@ def send_to_kindle(filepath: str, book_title: Optional[str] = None, recipient_em
         filename=clean_display_name
     )
 
+    def _smtp_send(host: str, port: int, use_ssl: bool) -> None:
+        if use_ssl:
+            with smtplib.SMTP_SSL(host, port, timeout=SMTP_TIMEOUT) as srv:
+                srv.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                srv.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=SMTP_TIMEOUT) as srv:
+                srv.ehlo()
+                srv.starttls()
+                srv.ehlo()
+                srv.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                srv.send_message(msg)
+
+    # Resolve smtp.gmail.com to IPv4 explicitly to avoid Render's IPv6 routing issues
     try:
-        logger.info(f"Connecting to Gmail SMTP for {GMAIL_USER} -> {target_email}...")
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=SMTP_TIMEOUT) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-        logger.info(f"✅ Successfully sent '{clean_display_name}' to {target_email}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Failed to send email via SMTP: {e}")
-        return False
+        ipv4 = socket.getaddrinfo("smtp.gmail.com", None, socket.AF_INET)[0][4][0]
+    except Exception:
+        ipv4 = "smtp.gmail.com"
+
+    last_error: Exception = Exception("No attempt made")
+    for host, port, use_ssl in [
+        (ipv4, 587, False),   # STARTTLS IPv4 (Render-friendly)
+        ("smtp.gmail.com", 587, False),  # STARTTLS fallback
+        (ipv4, 465, True),    # SSL IPv4
+        ("smtp.gmail.com", 465, True),   # SSL fallback
+    ]:
+        try:
+            logger.info(f"Connecting to Gmail SMTP for {GMAIL_USER} -> {target_email} ({host}:{port})...")
+            _smtp_send(host, port, use_ssl)
+            logger.info(f"✅ Successfully sent '{clean_display_name}' to {target_email}")
+            return True
+        except Exception as e:
+            logger.warning(f"SMTP attempt {host}:{port} failed: {e}")
+            last_error = e
+
+    logger.error(f"❌ Failed to send email via SMTP: {last_error}")
+    return False
