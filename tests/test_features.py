@@ -203,11 +203,15 @@ class TestBotFeatures(unittest.TestCase):
         users.pop(str(test_uid), None)
         user_manager.save_users(users)
 
-    @patch("smtplib.SMTP_SSL")
-    def test_kindle_mailer_regular_email(self, mock_smtp):
+    @patch("gabook.services.kindle_mailer.requests.post")
+    def test_kindle_mailer_regular_email(self, mock_post):
         """Verify kindle_mailer formats message differently for regular vs kindle emails."""
         from gabook.services import kindle_mailer
         import tempfile
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_post.return_value = mock_resp
 
         with tempfile.NamedTemporaryFile("wb", suffix=".epub", delete=False) as tf:
             tf.write(b"dummy epub data")
@@ -215,16 +219,17 @@ class TestBotFeatures(unittest.TestCase):
 
         try:
             with patch.object(kindle_mailer, "GMAIL_USER", "test@gmail.com"), \
-                 patch.object(kindle_mailer, "GMAIL_APP_PASSWORD", "secret123"):
-                
+                 patch.object(kindle_mailer, "_MAILJET_API_KEY", "key123"), \
+                 patch.object(kindle_mailer, "_MAILJET_SECRET_KEY", "secret123"):
+
                 # Test regular email
                 success = kindle_mailer.send_to_kindle(tf_path, book_title="Don Quijote", recipient_email="amigo@gmail.com")
                 self.assertTrue(success)
-                server_instance = mock_smtp.return_value.__enter__.return_value
-                self.assertTrue(server_instance.send_message.called)
-                sent_msg = server_instance.send_message.call_args[0][0]
-                self.assertEqual(sent_msg["To"], "amigo@gmail.com")
-                self.assertIn("Don Quijote", sent_msg["Subject"])
+                self.assertTrue(mock_post.called)
+                payload = mock_post.call_args[1]["json"]
+                msg = payload["Messages"][0]
+                self.assertEqual(msg["To"][0]["Email"], "amigo@gmail.com")
+                self.assertIn("Don Quijote", msg["Subject"])
         finally:
             if os.path.exists(tf_path):
                 os.remove(tf_path)
@@ -628,14 +633,13 @@ class TestBotFeatures(unittest.TestCase):
             if os.path.exists(tf_path):
                 os.remove(tf_path)
 
-    @patch("smtplib.SMTP_SSL")
-    def test_kindle_mailer_smtp_failure_handling(self, mock_smtp):
-        """Verify kindle_mailer catches SMTP exceptions gracefully without crashing."""
-        import smtplib
+    @patch("gabook.services.kindle_mailer.requests.post")
+    def test_kindle_mailer_smtp_failure_handling(self, mock_post):
+        """Verify kindle_mailer catches send exceptions gracefully without crashing."""
         import tempfile
         from gabook.services import kindle_mailer
 
-        mock_smtp.side_effect = smtplib.SMTPConnectError(421, "Connection refused")
+        mock_post.side_effect = Exception("Connection refused")
 
         with tempfile.NamedTemporaryFile("wb", suffix=".epub", delete=False) as tf:
             tf.write(b"data")
@@ -643,7 +647,8 @@ class TestBotFeatures(unittest.TestCase):
 
         try:
             with patch.object(kindle_mailer, "GMAIL_USER", "test@gmail.com"), \
-                 patch.object(kindle_mailer, "GMAIL_APP_PASSWORD", "secret123"):
+                 patch.object(kindle_mailer, "_MAILJET_API_KEY", "key123"), \
+                 patch.object(kindle_mailer, "_MAILJET_SECRET_KEY", "secret123"):
                 success = kindle_mailer.send_to_kindle(tf_path, book_title="Test", recipient_email="test@kindle.com")
                 self.assertFalse(success)
         finally:
