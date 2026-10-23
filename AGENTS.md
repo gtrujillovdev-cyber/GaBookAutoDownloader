@@ -114,7 +114,8 @@ Para garantizar que el bot opere 24/7 de forma ininterrumpida sin conflictos y d
 * **Plataforma:** Render como **Web Service** (`plan: free`) orquestado por `render.yaml`.
 * **Servidor de Salud HTTP:** El bot arranca en un hilo demonio un servidor HTTP (`src/gabook/services/health_server.py`) que escucha en `0.0.0.0:$PORT` y responde `200 OK` en `/health`.
 * **Keep-Alive con UptimeRobot:** Render Free se suspende tras 15 minutos de inactividad HTTP. UptimeRobot monitoriza `https://gabookautodownloader.onrender.com/health` con ping cada 5 minutos, garantizando funcionamiento continuo 24/7/365.
-* **Prohibición de Instancias Duplicadas:** Telegram solo admite un proceso escuchando `getUpdates` por token. El demonio local en macOS (`launchd`) **debe permanecer apagado** mientras Render esté en ejecución para evitar caídas por `Conflict: terminated by other getUpdates`.
+* **Prohibición de Instancias Duplicadas:** Telegram solo admite un proceso escuchando `getUpdates` por token. El demonio local en macOS (`launchd`) ha sido **eliminado permanentemente** (`~/Library/LaunchAgents/com.gabookautodownloader.plist` borrado) para evitar conflictos `Conflict 409`.
+* **Persistencia de Usuarios (Upstash Redis):** `user_manager.py` almacena los perfiles en Upstash Redis cuando `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` están configuradas. Render free tiene filesystem efímero — sin Redis los datos se pierden en cada restart. Las credenciales se configuran en el dashboard de Render, nunca en el repo.
 
 ### 2. Flujo de Trabajo Obligatorio ante Cada Cambio
 Ante cualquier modificación, corrección o mejora en el código, se debe ejecutar estrictamente este ciclo:
