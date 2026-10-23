@@ -568,7 +568,7 @@ _DOWNLOAD_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
 }
 
-def _stream_to_file(url: str, filepath: str, timeout: int = 30) -> bool:
+def _stream_to_file(url: str, filepath: str, timeout: int = 30, progress_cb=None) -> bool:
     """
     Streams `url` to `filepath` with a hard size cap and validates that the payload is really
     an EPUB (ZIP) and not an HTML error page. Returns True on success; cleans up on failure.
@@ -577,18 +577,21 @@ def _stream_to_file(url: str, filepath: str, timeout: int = 30) -> bool:
         with requests.get(url, headers=_DOWNLOAD_HEADERS, timeout=timeout, stream=True) as resp:
             resp.raise_for_status()
             declared = resp.headers.get("Content-Length", "")
-            if declared.isdigit() and int(declared) > MAX_DOWNLOAD_BYTES:
-                logger.warning(f"Download refused (declared {declared} bytes > cap): {url}")
+            total_bytes = int(declared) if declared.isdigit() else None
+            if total_bytes and total_bytes > MAX_DOWNLOAD_BYTES:
+                logger.warning(f"Download refused (declared {total_bytes} bytes > cap): {url}")
                 return False
             written = 0
             with open(filepath, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=32768):
+                for chunk in resp.iter_content(chunk_size=65536):
                     if not chunk:
                         continue
                     written += len(chunk)
                     if written > MAX_DOWNLOAD_BYTES:
                         raise ValueError("download exceeded size cap")
                     f.write(chunk)
+                    if progress_cb:
+                        progress_cb(written, total_bytes)
         with open(filepath, "rb") as f:
             head = f.read(4)
         if written < 1024 or head != EPUB_MAGIC:
@@ -661,7 +664,7 @@ def _libgen_download_candidates(book: Dict) -> List[str]:
             logger.warning(f"Libgen mirror {mirror_url} failed: {e}")
     return candidates
 
-def download_epub(book: Dict, output_dir: Optional[str] = None) -> Optional[str]:
+def download_epub(book: Dict, output_dir: Optional[str] = None, progress_cb=None) -> Optional[str]:
     """
     Downloads an EPUB from a direct URL or Libgen mirrors and saves it locally with a
     collision-resistant temporary filename. Returns the file path, or None on failure.
@@ -675,7 +678,7 @@ def download_epub(book: Dict, output_dir: Optional[str] = None) -> Optional[str]
     direct = book.get("direct_url")
     if direct:
         logger.info(f"Downloading from direct source: {direct}")
-        if _stream_to_file(direct, filepath, timeout=25):
+        if _stream_to_file(direct, filepath, timeout=25, progress_cb=progress_cb):
             return filepath
         m = re.search(r"archive\.org/download/([^/]+)/", direct)
         if m:

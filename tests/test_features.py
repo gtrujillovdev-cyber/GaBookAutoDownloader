@@ -810,7 +810,7 @@ class TestHardening(unittest.TestCase):
         book = {"title": "Pueblos del pasado", "direct_url": "https://archive.org/download/pdp123/pdp123.epub"}
         calls = []
 
-        def fake_stream(url, filepath, timeout=30):
+        def fake_stream(url, filepath, timeout=30, progress_cb=None):
             calls.append(url)
             if url.endswith("Pueblos%20del%20pasado.epub"):
                 with open(filepath, "wb") as f:

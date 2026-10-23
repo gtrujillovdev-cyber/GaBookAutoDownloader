@@ -4,6 +4,7 @@ import time
 import uuid
 import asyncio
 import logging
+import functools
 from typing import Dict, Optional, Tuple
 
 from telegram import (
@@ -96,25 +97,35 @@ _PROGRESS_FRAMES = [
     "▓▓▓▓▓▓▓▓▓▓",
 ]
 
-async def _animate_download(msg, title_md: str, author_md: str, stop_event: asyncio.Event):
-    """Animates a progress bar on msg while stop_event is not set."""
-    max_frame = len(_PROGRESS_FRAMES) - 1
-    frame = 0
+async def _track_download_progress(msg, title_md: str, author_md: str,
+                                    queue: asyncio.Queue, stop_event: asyncio.Event):
+    """Updates progress bar in Telegram from real download bytes reported via queue."""
+    last_shown_pct = -1
+    last_edit_time = 0.0
     while not stop_event.is_set():
-        idx = min(frame, max_frame)
-        bar = _PROGRESS_FRAMES[idx]
-        pct = (idx + 1) * 10
         try:
-            await msg.edit_text(
-                f"📥 *Descargando...*  `[{bar}] {pct}%`\n\n"
-                f"📖 *{title_md}* — _{author_md}_",
-                parse_mode=ParseMode.MARKDOWN
-            )
-        except Exception:
+            done, total = await asyncio.wait_for(queue.get(), timeout=1.5)
+            if total and total > 0:
+                pct = min(int(done / total * 100), 99)
+            else:
+                # No Content-Length: advance slowly, cap at 90 until confirmed done
+                pct = min(last_shown_pct + 8, 90) if last_shown_pct >= 0 else 8
+            now = asyncio.get_event_loop().time()
+            if pct - last_shown_pct >= 10 and now - last_edit_time >= 1.5:
+                filled = pct // 10
+                bar = "▓" * filled + "░" * (10 - filled)
+                try:
+                    await msg.edit_text(
+                        f"📥 *Descargando...*  `[{bar}] {pct}%`\n\n"
+                        f"📖 *{title_md}* — _{author_md}_",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    last_shown_pct = pct
+                    last_edit_time = now
+                except Exception:
+                    pass
+        except asyncio.TimeoutError:
             pass
-        if frame < max_frame:
-            frame += 1
-        await asyncio.sleep(1.5)
 
 def cleanup_expired_sessions():
     """Removes search sessions older than SESSION_TTL_SECONDS to avoid RAM bloat over time."""
@@ -1068,16 +1079,24 @@ async def execute_book_send(
     total_steps = 3 if is_kindle else 2
     dots = ["●○○", "●●○", "●●●"]
 
-    # Step 1: Download with animated progress bar
-    stop_animation = asyncio.Event()
-    anim_task = asyncio.create_task(_animate_download(target_msg, title_md, author_md, stop_animation))
-
+    # Step 1: Download with real progress bar
+    progress_queue: asyncio.Queue = asyncio.Queue()
+    stop_progress = asyncio.Event()
     loop = asyncio.get_running_loop()
+
+    def _progress_cb(done: int, total):
+        loop.call_soon_threadsafe(progress_queue.put_nowait, (done, total))
+
+    progress_task = asyncio.create_task(
+        _track_download_progress(target_msg, title_md, author_md, progress_queue, stop_progress)
+    )
     try:
-        filepath = await loop.run_in_executor(None, download_epub, selected_book, DOWNLOADS_DIR)
+        filepath = await loop.run_in_executor(
+            None, functools.partial(download_epub, progress_cb=_progress_cb), selected_book, DOWNLOADS_DIR
+        )
     finally:
-        stop_animation.set()
-        await asyncio.gather(anim_task, return_exceptions=True)
+        stop_progress.set()
+        await asyncio.gather(progress_task, return_exceptions=True)
 
     if not filepath or not os.path.exists(filepath):
         await target_msg.edit_text(
