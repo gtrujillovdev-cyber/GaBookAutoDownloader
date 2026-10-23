@@ -16,6 +16,21 @@ from gabook.config import (
     LOW_STORAGE_THRESHOLD_MB
 )
 
+# --- Redis persistence (Upstash) ---
+# If UPSTASH_REDIS_REST_URL is set, user data is stored in Redis (Render-safe).
+# Otherwise falls back to the local users.json file (local dev / Docker with volume).
+_REDIS_URL = os.getenv("UPSTASH_REDIS_REST_URL")
+_REDIS_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+_REDIS_KEY = "gabook:users"
+_redis_client = None
+
+if _REDIS_URL and _REDIS_TOKEN:
+    try:
+        from upstash_redis import Redis as _UpstashRedis
+        _redis_client = _UpstashRedis(url=_REDIS_URL, token=_REDIS_TOKEN)
+    except Exception as _e:
+        logging.getLogger(__name__).warning(f"Upstash Redis init failed, falling back to file: {_e}")
+
 logger = logging.getLogger(__name__)
 
 # Serializes read-modify-write cycles on USERS_FILE (handlers run in several threads).
@@ -29,7 +44,20 @@ def _locked(fn):
     return wrapper
 
 def load_users() -> Dict[str, dict]:
-    """Loads all registered users from USERS_FILE."""
+    """Loads all registered users. Uses Upstash Redis when configured, else local file."""
+    if _redis_client:
+        try:
+            raw = _redis_client.get(_REDIS_KEY)
+            if raw is None:
+                return {}
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(data, dict):
+                raise ValueError("Redis payload is not a JSON object")
+            return data
+        except Exception as e:
+            logger.error(f"Error loading users from Redis: {e}")
+            return {}
+    # --- file fallback (local dev / Docker with volume) ---
     if not os.path.exists(USERS_FILE):
         return {}
     try:
@@ -40,7 +68,6 @@ def load_users() -> Dict[str, dict]:
         return data
     except Exception as e:
         logger.error(f"Error loading {USERS_FILE}: {e}")
-        # Keep a copy of the unreadable file so the next save cannot silently destroy it.
         try:
             backup = f"{USERS_FILE}.corrupt-{int(time.time())}"
             shutil.copy2(USERS_FILE, backup)
@@ -50,7 +77,15 @@ def load_users() -> Dict[str, dict]:
         return {}
 
 def save_users(users: Dict[str, dict]) -> bool:
-    """Saves users dictionary to USERS_FILE atomically to prevent file corruption."""
+    """Saves users dictionary. Uses Upstash Redis when configured, else local file."""
+    if _redis_client:
+        try:
+            _redis_client.set(_REDIS_KEY, json.dumps(users, ensure_ascii=False))
+            return True
+        except Exception as e:
+            logger.error(f"Error saving users to Redis: {e}")
+            return False
+    # --- file fallback (local dev / Docker with volume) ---
     dir_name = os.path.dirname(USERS_FILE) or "."
     temp_name = None
     try:
