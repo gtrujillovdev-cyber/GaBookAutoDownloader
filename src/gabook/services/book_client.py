@@ -247,7 +247,7 @@ def search_archive_org(query: str, max_results: int = 25) -> List[Dict]:
     """Searches Internet Archive (archive.org) for open EPUBs across an expanded range."""
     url = "https://archive.org/advancedsearch.php"
     params = {
-        "q": f"{query} format:EPUB",
+        "q": f"({query}) format:EPUB -access-restricted-item:true",
         "fl[]": "identifier,title,creator,year,language",
         "sort[]": "downloads desc",
         "rows": max_results,
@@ -263,7 +263,14 @@ def search_archive_org(query: str, max_results: int = 25) -> List[Dict]:
                 ident = d.get("identifier")
                 if not ident:
                     continue
-                title = d.get("title", "Sin título")
+                raw_title = d.get("title", "Sin título")
+                # Archive.org titles often contain "Spanish title: English title 1st ed."
+                # Keep only the part before the first colon if it's meaningful
+                if ":" in raw_title:
+                    before_colon = raw_title.split(":")[0].strip()
+                    title = before_colon if len(before_colon) >= 10 else raw_title[:80]
+                else:
+                    title = raw_title[:80]
                 creator = d.get("creator", "Desconocido")
                 if isinstance(creator, list):
                     creator = ", ".join(creator)
@@ -295,6 +302,9 @@ def search_openlibrary(query: str, max_results: int = 15) -> List[Dict]:
         if r.status_code == 200:
             docs = r.json().get("docs", [])
             for d in docs:
+                # Skip lending-only items (not freely downloadable)
+                if d.get("lending_edition_s") or d.get("lending_identifier_s"):
+                    continue
                 ia_list = d.get("ia", [])
                 if not ia_list:
                     continue
@@ -352,20 +362,173 @@ def search_gutenberg(query: str, max_results: int = 5) -> List[Dict]:
 
     return results
 
+def search_standard_ebooks(query: str, max_results: int = 5) -> List[Dict]:
+    """Searches Standard Ebooks via web search for high-quality public domain EPUBs."""
+    url = f"https://standardebooks.org/ebooks?q={requests.utils.quote(query)}"
+    browser_headers = {**HEADERS, "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    results = []
+    try:
+        r = requests.get(url, headers=browser_headers, timeout=5)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        for item in soup.select('li[typeof="schema:Book"]')[:max_results]:
+            about = item.get("about", "")
+            if not about:
+                continue
+            title_tag = item.select_one('span[property="schema:name"]')
+            title = title_tag.get_text(strip=True) if title_tag else about.split("/")[-1].replace("-", " ").title()
+            author_tag = item.select_one('p.author a')
+            author = author_tag.get_text(strip=True) if author_tag else "Clásico"
+            # Epub URL follows predictable pattern: /ebooks/{author}/{title}/downloads/{author}_{title}.epub
+            slug = about.strip("/").replace("ebooks/", "")  # e.g. "bram-stoker/dracula"
+            parts = slug.split("/")
+            epub_filename = "_".join(parts) + ".epub"
+            epub_url = f"https://standardebooks.org{about}/downloads/{epub_filename}"
+            results.append({
+                "title": title,
+                "author": author,
+                "year": "Clásico",
+                "lang": "English",
+                "size": "~500 kB",
+                "direct_url": epub_url,
+                "source": "standard_ebooks"
+            })
+    except Exception as e:
+        logger.warning(f"Standard Ebooks search error: {e}")
+    return results
+
+def search_manybooks(query: str, max_results: int = 8) -> List[Dict]:
+    """Searches ManyBooks via OPDS for free EPUB books."""
+    url = f"https://manybooks.net/opds/search/?q={requests.utils.quote(query)}"
+    results = []
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=6)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.content, "xml")
+        for entry in soup.find_all("entry")[:max_results]:
+            title_tag = entry.find("title")
+            title = title_tag.get_text(strip=True) if title_tag else "Sin título"
+            author_tag = entry.find("author")
+            name_tag = author_tag.find("name") if author_tag else None
+            author = name_tag.get_text(strip=True) if name_tag else "Autor desconocido"
+            epub_link = entry.find("link", {"type": "application/epub+zip"})
+            if not epub_link:
+                continue
+            href = epub_link.get("href", "")
+            if not href:
+                continue
+            results.append({
+                "title": title,
+                "author": author,
+                "year": "",
+                "lang": "English",
+                "size": "~500 kB",
+                "direct_url": href,
+                "source": "manybooks"
+            })
+    except Exception as e:
+        logger.warning(f"ManyBooks search error: {e}")
+    return results
+
+def search_annas_archive(query: str, max_results: int = 10) -> List[Dict]:
+    """Searches Anna's Archive for EPUB books (best effort, may be throttled by Cloudflare)."""
+    url = f"https://annas-archive.org/search?q={requests.utils.quote(query)}&ext=epub"
+    results = []
+    try:
+        r = requests.get(url, headers={**HEADERS, "Accept-Language": "es-ES,es;q=0.9"}, timeout=8)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        cards = soup.select("a[href*='/md5/']")[:max_results]
+        for card in cards:
+            texts = [t.strip() for t in card.stripped_strings if t.strip()]
+            if not texts:
+                continue
+            title = texts[0][:80]
+            author = texts[1][:50] if len(texts) > 1 else "Autor desconocido"
+            md5_match = re.search(r"/md5/([a-f0-9]+)", card.get("href", ""))
+            if not md5_match:
+                continue
+            md5 = md5_match.group(1)
+            results.append({
+                "title": title,
+                "author": author,
+                "year": "",
+                "lang": "Unknown",
+                "size": "~1 MB",
+                "direct_url": f"https://annas-archive.org/fast_download/{md5}/0/0",
+                "source": "annas_archive"
+            })
+    except Exception as e:
+        logger.warning(f"Anna's Archive search error: {e}")
+    return results
+
+def search_zlib(query: str, max_results: int = 10) -> List[Dict]:
+    """Searches Z-Library via z-lib.fm for EPUB books (best effort, may be throttled)."""
+    base = "https://z-lib.fm"
+    results = []
+    try:
+        r = requests.get(f"{base}/s/{requests.utils.quote(query)}?e=1", headers=HEADERS, timeout=8)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        cards = soup.select(".book-item, .bookRow, .resItemBox")[:max_results]
+        for card in cards:
+            title_tag = card.select_one("h3, .book__title, .itemCover")
+            if not title_tag:
+                continue
+            title = title_tag.get_text(strip=True)[:80]
+            author_tag = card.select_one(".book__author, .authors")
+            author = author_tag.get_text(strip=True)[:50] if author_tag else "Autor desconocido"
+            link_tag = card.select_one("a[href]")
+            if not link_tag:
+                continue
+            book_href = link_tag.get("href", "")
+            if not book_href.startswith("http"):
+                book_href = base + book_href
+            detail_r = requests.get(book_href, headers=HEADERS, timeout=6)
+            if detail_r.status_code == 200:
+                detail_soup = BeautifulSoup(detail_r.text, "html.parser")
+                dl_btn = detail_soup.find("a", href=lambda h: h and ("/dl/" in h or "/downloads/" in h))
+                if dl_btn:
+                    dl_href = dl_btn.get("href", "")
+                    if not dl_href.startswith("http"):
+                        dl_href = base + dl_href
+                    results.append({
+                        "title": title,
+                        "author": author,
+                        "year": "",
+                        "lang": "Unknown",
+                        "size": "~1 MB",
+                        "direct_url": dl_href,
+                        "source": "zlibrary"
+                    })
+    except Exception as e:
+        logger.warning(f"Z-Library search error: {e}")
+    return results
+
 def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] = "Spanish") -> Tuple[List[Dict], List[Dict]]:
     """
-    Multi-source expanded engine querying Libgen, Archive.org, OpenLibrary, and Gutenberg concurrently.
+    Multi-source engine: Libgen, Archive.org, OpenLibrary, Gutenberg,
+    Standard Ebooks, ManyBooks, Anna's Archive, Z-Library.
     """
     all_books = []
     seen_titles = set()
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         f_libgen = executor.submit(search_libgen, query, 35)
         f_archive = executor.submit(search_archive_org, query, 25)
         f_openlibrary = executor.submit(search_openlibrary, query, 15)
         f_gutenberg = executor.submit(search_gutenberg, query, 5)
+        f_standard = executor.submit(search_standard_ebooks, query, 5)
+        f_manybooks = executor.submit(search_manybooks, query, 8)
+        f_annas = executor.submit(search_annas_archive, query, 10)
+        f_zlib = executor.submit(search_zlib, query, 10)
 
-        for future in [f_libgen, f_archive, f_openlibrary, f_gutenberg]:
+        for future in [f_libgen, f_archive, f_openlibrary, f_gutenberg,
+                       f_standard, f_manybooks, f_annas, f_zlib]:
             try:
                 res = future.result()
                 for b in res:

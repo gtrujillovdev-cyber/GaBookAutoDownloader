@@ -708,12 +708,20 @@ class TestBotFeatures(unittest.TestCase):
     @patch("gabook.services.book_client.search_archive_org")
     @patch("gabook.services.book_client.search_openlibrary")
     @patch("gabook.services.book_client.search_gutenberg")
-    def test_search_epubs_network_error_resilience(self, mock_gut, mock_ol, mock_ia, mock_lg):
+    @patch("gabook.services.book_client.search_standard_ebooks")
+    @patch("gabook.services.book_client.search_manybooks")
+    @patch("gabook.services.book_client.search_annas_archive")
+    @patch("gabook.services.book_client.search_zlib")
+    def test_search_epubs_network_error_resilience(self, mock_zlib, mock_anna, mock_many, mock_se, mock_gut, mock_ol, mock_ia, mock_lg):
         """Verify search_epubs handles source errors and timeouts gracefully without crashing."""
         mock_lg.side_effect = Exception("Libgen connection timeout")
         mock_ia.side_effect = Exception("Archive.org 503 Service Unavailable")
         mock_ol.return_value = []
         mock_gut.return_value = []
+        mock_se.return_value = []
+        mock_many.return_value = []
+        mock_anna.return_value = []
+        mock_zlib.return_value = []
 
         matching, others = search_epubs("Error Prone Search", max_results=5, target_lang="Spanish")
         self.assertEqual(matching, [])
