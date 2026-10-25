@@ -685,7 +685,7 @@ def download_epub(book: Dict, output_dir: Optional[str] = None, progress_cb=None
             real_url = _resolve_archive_epub_url(m.group(1))
             if real_url and real_url != direct:
                 logger.info(f"Retrying with resolved Archive.org file: {real_url}")
-                if _stream_to_file(real_url, filepath, timeout=25):
+                if _stream_to_file(real_url, filepath, timeout=25, progress_cb=progress_cb):
                     return filepath
             else:
                 logger.warning(f"Archive.org item {m.group(1)} has no downloadable EPUB (may be lending-only).")
@@ -693,7 +693,7 @@ def download_epub(book: Dict, output_dir: Optional[str] = None, progress_cb=None
     # 2. Libgen mirrors: try every candidate link until one yields a valid EPUB
     for url in _libgen_download_candidates(book):
         logger.info(f"Downloading from Libgen: {url}")
-        if _stream_to_file(url, filepath, timeout=30):
+        if _stream_to_file(url, filepath, timeout=30, progress_cb=progress_cb):
             return filepath
 
     logger.error(f"All download sources failed for '{book.get('title', '?')}' ({book.get('source', '?')})")

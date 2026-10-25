@@ -906,6 +906,50 @@ class TestHardening(unittest.TestCase):
             handler.do_GET()
         self.assertNotIn("sender_email", json.loads(handler.wfile.getvalue().decode()))
 
+    def test_download_epub_propagates_progress_cb_to_all_sources(self):
+        """Verify progress_cb is forwarded to Archive.org retry and Libgen mirrors."""
+        from gabook.services import book_client
+        passed_callbacks = []
+
+        def fake_stream(url, filepath, timeout=30, progress_cb=None):
+            passed_callbacks.append(progress_cb)
+            with open(filepath, "wb") as f:
+                f.write(b"PK\x03\x04" + b"0" * 2000)
+            return True
+
+        my_cb = MagicMock()
+
+        # 1. Libgen candidate
+        book_libgen = {"title": "Libro Libgen", "mirrors": []}
+        with patch.object(book_client, "_libgen_download_candidates", return_value=["https://libgen.li/get.php?md5=123"]), \
+             patch.object(book_client, "_stream_to_file", side_effect=fake_stream):
+            res = book_client.download_epub(book_libgen, output_dir=_TEST_TMP, progress_cb=my_cb)
+            self.assertIsNotNone(res)
+            self.assertEqual(passed_callbacks[-1], my_cb)
+            os.remove(res)
+
+        # 2. Archive.org retry
+        book_archive = {"title": "Libro Archive", "direct_url": "https://archive.org/download/item123/item123.epub"}
+        meta = MagicMock(status_code=200)
+        meta.json.return_value = {"files": [{"name": "Item.epub", "format": "EPUB", "source": "original"}]}
+
+        def fake_stream_retry(url, filepath, timeout=30, progress_cb=None):
+            passed_callbacks.append(progress_cb)
+            if "Item.epub" in url:
+                with open(filepath, "wb") as f:
+                    f.write(b"PK\x03\x04" + b"0" * 2000)
+                return True
+            return False
+
+        with patch.object(book_client, "_stream_to_file", side_effect=fake_stream_retry), \
+             patch("gabook.services.book_client.requests.get", return_value=meta):
+            res2 = book_client.download_epub(book_archive, output_dir=_TEST_TMP, progress_cb=my_cb)
+            self.assertIsNotNone(res2)
+            # Both direct attempt and resolved retry must receive the callback
+            self.assertEqual(passed_callbacks[-1], my_cb)
+            self.assertEqual(passed_callbacks[-2], my_cb)
+            os.remove(res2)
+
 
 if __name__ == "__main__":
     unittest.main()
