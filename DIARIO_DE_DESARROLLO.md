@@ -55,17 +55,17 @@ Render free tier bloquea puertos SMTP salientes (465, 587). Los intentos de env�
 - Añadidas entradas `MAILJET_API_KEY` y `MAILJET_SECRET_KEY`.
 
 ### Bug crítico resuelto: Mailjet 401 persistente
-**Causa raíz:** API Key introducida como `f19adf328ef70c47de84b5a6bd33d73` (faltaba el `1` inicial).
-**Valor correcto:** `1f19adf328ef70c47de84b5a6bd33d73`.
+**Causa raíz:** API Key introducida incompleta en las variables de entorno (faltaba el primer carácter al copiarla del dashboard, 31 caracteres en lugar de 32).
+**Solución:** Copiar la API Key completa (32 caracteres) y regenerar la Secret Key asociada.
 
 Proceso de diagnóstico:
 1. Logs Render mostraban `HTTP 401 Unauthorized` en cada intento de envío.
-2. Test local con `python3` y las mismas credenciales → 401.
-3. Reset de Secret Key en panel Mailjet (`https://app.mailjet.com/account/apikeys`).
-4. Nueva Secret Key: `3ad34bde3774da41d8b8af0a28bbae32`.
-5. Comparación visual de la API Key en el panel → detectado `1` faltante al inicio.
-6. Test local con `1f19adf328ef70c47de84b5a6bd33d73` + nueva Secret Key → `200 OK {"Messages":[{"Status":"success"}]}`.
-7. Actualización de ambas env vars en Render Dashboard → redeploy → **Deploy succeeded (47s)**.
+2. Test local con `python3` reproduciendo la llamada con las credenciales copiadas → 401.
+3. Reset preventivo de Secret Key en el panel de Mailjet (`https://app.mailjet.com/account/apikeys`).
+4. Generación de nueva Secret Key limpia.
+5. Comparación visual de longitud de la API Key en el panel → detectado 1 carácter faltante al inicio.
+6. Test local con la API Key completa de 32 caracteres + nueva Secret Key → `200 OK {"Messages":[{"Status":"success"}]}`.
+7. Actualización de ambas env vars en Render Dashboard (`MAILJET_API_KEY`, `MAILJET_SECRET_KEY`) → redeploy → **Deploy succeeded (47s)**.
 
 ### Estado final
 - 43/43 tests pasando.
