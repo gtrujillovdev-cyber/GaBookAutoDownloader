@@ -245,10 +245,23 @@ La arquitectura oficial y recomendada para mantener el bot activo 24/7/365 de fo
    * En **Environment Variables**, define tus credenciales (`TELEGRAM_BOT_TOKEN`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `KINDLE_EMAIL`, etc.).
 2. **Keep-Alive con UptimeRobot**:
    * Para evitar que la instancia gratuita de Render entre en suspensión tras 15 minutos de inactividad:
-   * En [UptimeRobot.com](https://uptimerobot.com), crea un monitor de tipo **HTTP(s)** apuntando a `https://<tu-servicio>.onrender.com/health` con intervalo de **5 minutos**.
+   * En [UptimeRobot.com](https://uptimerobot.com), crea un monitor de tipo **HTTP(s)** apuntando a `https://gabookautodownloader.onrender.com/health` con intervalo de **5 minutos**.
    * Render responderá `{"status": "healthy"}` en cada pulso, manteniendo el bot despierto y operativo permanentemente a coste $0.
 3. **Flujo de Despliegue Continuo (CI/CD)**:
    * Cada `git push origin main` activa automáticamente el despliegue de la nueva versión en Render sin tiempos de inactividad ni intervención manual.
+
+#### 🎛️ Centro de Control y Monitorización del Pipeline
+
+| Servicio | Propósito | Enlace Directo |
+| :--- | :--- | :--- |
+| **Render Dashboard** | Logs en vivo, despliegues y métricas del worker | [dashboard.render.com](https://dashboard.render.com) |
+| **Endpoint de Salud (Público)** | Test instantáneo HTTP 200 OK del bot | [`https://gabookautodownloader.onrender.com/health`](https://gabookautodownloader.onrender.com/health) |
+| **UptimeRobot** | Monitorización de disponibilidad 24/7 y pings keep-alive | [uptimerobot.com/dashboard](https://uptimerobot.com/dashboard) |
+| **Upstash Redis Console** | Persistencia serverless, datos de usuarios y perfiles | [console.upstash.com](https://console.upstash.com) |
+| **Mailjet Dashboard** | Estadísticas de envíos de emails y entrega a Kindle | [app.mailjet.com/dashboard](https://app.mailjet.com/dashboard) |
+| **GitHub Actions (CI/CD)** | Ejecución de la suite de 44 tests unitarios en cada push | [GitHub Actions](https://github.com/gtrujillovdev-cyber/GaBookAutoDownloader/actions) |
+| **Amazon Kindle (Ajustes)** | Gestión de remitentes aprobados y correo `@kindle.com` | [Preferencias de Amazon](https://www.amazon.es/hz/mycd/myx#/home/settings/payment) |
+| **Bot en Telegram** | Acceso e interacción directa con el bot | [@GaBookAutoDownloaderBot](https://t.me/GaBookAutoDownloaderBot) |
 
 ---
 
