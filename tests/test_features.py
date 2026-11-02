@@ -133,6 +133,61 @@ class TestBotFeatures(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["title"], "Historia de Roma")
 
+    def test_relevance_scoring_prefers_exact_novel_over_summaries(self):
+        """Verify that genuine books rank far above study guides and summaries."""
+        from gabook.services.book_client import calculate_relevance_score
+        novel = {"title": "El principito", "author": "Antoine de Saint-Exupéry", "lang": "Spanish", "source": "libgen"}
+        summary = {"title": "Guía de lectura El principito: Resumen y análisis", "author": "Resúmenes", "lang": "Spanish", "source": "archive_org"}
+        english = {"title": "The Little Prince", "author": "Antoine de Saint-Exupéry", "lang": "English", "source": "gutenberg"}
+
+        score_novel = calculate_relevance_score(novel, "El principito", "Spanish")
+        score_summary = calculate_relevance_score(summary, "El principito", "Spanish")
+        score_english = calculate_relevance_score(english, "El principito", "Spanish")
+
+        self.assertGreater(score_novel, score_summary)
+        self.assertGreater(score_novel, score_english)
+        self.assertGreater(score_novel, 1000)
+
+    def test_relevance_scoring_author_and_title_matching(self):
+        """Verify that searching with author and title ranks exact match on top."""
+        from gabook.services.book_client import calculate_relevance_score
+        dune = {"title": "Dune", "author": "Frank Herbert", "lang": "Spanish", "source": "libgen"}
+        dune_messiah = {"title": "Dune Messiah", "author": "Frank Herbert", "lang": "Spanish", "source": "libgen"}
+        science_dune = {"title": "The Science of Dune: An Unauthorized Analysis", "author": "Kevin Grazier", "lang": "English", "source": "libgen"}
+
+        score_dune = calculate_relevance_score(dune, "Dune Frank Herbert", "Spanish")
+        score_messiah = calculate_relevance_score(dune_messiah, "Dune Frank Herbert", "Spanish")
+        score_science = calculate_relevance_score(science_dune, "Dune Frank Herbert", "Spanish")
+
+        self.assertGreater(score_dune, score_messiah)
+        self.assertGreater(score_dune, score_science)
+
+    @patch("gabook.services.book_client.search_libgen")
+    @patch("gabook.services.book_client.search_archive_org")
+    @patch("gabook.services.book_client.search_openlibrary")
+    @patch("gabook.services.book_client.search_gutenberg")
+    @patch("gabook.services.book_client.search_standard_ebooks")
+    @patch("gabook.services.book_client.search_manybooks")
+    @patch("gabook.services.book_client.search_annas_archive")
+    @patch("gabook.services.book_client.search_zlib")
+    def test_search_epubs_merges_mirrors_and_md5(self, mock_zlib, mock_anna, mock_many, mock_se, mock_gut, mock_ol, mock_ia, mock_lg):
+        """Verify duplicate books from different sources have their mirrors and MD5 hashes merged."""
+        mock_lg.return_value = [{"title": "Cien años de soledad", "author": "Gabriel García Márquez", "lang": "Spanish", "mirrors": ["https://libgen.li/get.php?md5=aaa"]}]
+        mock_anna.return_value = [{"title": "Cien años de soledad", "author": "Gabriel García Márquez", "lang": "Spanish", "md5": "aaa", "mirrors": ["https://library.lol/main/aaa"]}]
+        mock_ia.return_value = []
+        mock_ol.return_value = []
+        mock_gut.return_value = []
+        mock_se.return_value = []
+        mock_many.return_value = []
+        mock_zlib.return_value = []
+
+        matching, _ = search_epubs("Cien años de soledad", max_results=5, target_lang="Spanish")
+        self.assertEqual(len(matching), 1)
+        book = matching[0]
+        self.assertEqual(book["md5"], "aaa")
+        self.assertIn("https://libgen.li/get.php?md5=aaa", book["mirrors"])
+        self.assertIn("https://library.lol/main/aaa", book["mirrors"])
+
     def test_health_server_unit(self):
         """Verify the health check HTTP server handler works hermetically."""
         from gabook.services.health_server import HealthCheckHandler, start_health_server

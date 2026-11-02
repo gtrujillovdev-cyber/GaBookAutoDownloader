@@ -2,6 +2,8 @@ import os
 import re
 import uuid
 import logging
+import difflib
+import unicodedata
 import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Tuple
@@ -150,13 +152,15 @@ def parse_query_and_language(raw_text: str, default_lang: Optional[str] = "Spani
     clean_query = re.sub(r'^(libros|novelas|cuentos|obras)\s+(de|sobre)\s+', '', clean_query, flags=re.IGNORECASE).strip()
     return clean_query, target_lang
 
-def fetch_libgen_page(base_url: str, query: str, page: int) -> List[Dict]:
-    """Fetches a specific page of results from a Libgen mirror."""
+def fetch_libgen_page(base_url: str, query: str, page: int, topic: Optional[str] = None) -> List[Dict]:
+    """Fetches a specific page of results from a Libgen mirror (optionally filtering by topic, e.g. fiction 'f')."""
     params = {
         "req": query,
         "page": page,
         "res": 100
     }
+    if topic:
+        params["topics[]"] = topic
     results = []
     try:
         resp = requests.get(base_url, params=params, headers=HEADERS, timeout=8)
@@ -192,12 +196,20 @@ def fetch_libgen_page(base_url: str, query: str, page: int) -> List[Dict]:
             if not mirror_links:
                 continue
 
+            md5 = None
+            for m in mirror_links:
+                m_match = re.search(r'md5=([a-fA-F0-9]{32})', m, re.IGNORECASE)
+                if m_match:
+                    md5 = m_match.group(1).lower()
+                    break
+
             results.append({
                 "title": title,
                 "author": author,
                 "year": year,
                 "lang": lang,
                 "size": size,
+                "md5": md5,
                 "mirrors": mirror_links,
                 "base": f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}",
                 "source": "libgen"
@@ -206,35 +218,105 @@ def fetch_libgen_page(base_url: str, query: str, page: int) -> List[Dict]:
         pass
     return results
 
-def search_libgen(query: str, max_results: int = 30) -> List[Dict]:
-    """Searches Libgen across prioritized mirrors concurrently with fast response."""
+def fetch_libgen_is_page(query: str, max_results: int = 25) -> List[Dict]:
+    """Fetches results from the main Libgen cluster (libgen.is / libgen.rs / libgen.st)."""
+    mirrors = ["https://libgen.is", "https://libgen.rs", "https://libgen.st"]
+    results = []
+    for base in mirrors:
+        try:
+            url = f"{base}/search.php"
+            params = {
+                "req": query,
+                "open": 0,
+                "res": 50,
+                "view": "simple",
+                "phrase": 1,
+                "column": "def"
+            }
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=6)
+            if resp.status_code != 200:
+                continue
+            soup = BeautifulSoup(resp.text, "html.parser")
+            table = soup.find("table", class_="c")
+            if not table:
+                continue
+            rows = table.find_all("tr")[1:]
+            for row in rows:
+                cols = row.find_all("td")
+                if len(cols) < 10:
+                    continue
+                ext = cols[8].get_text(strip=True).lower()
+                if ext != "epub":
+                    continue
+                author = cols[1].get_text(strip=True) or "Autor desconocido"
+                title_elem = cols[2].find("a")
+                title = title_elem.get_text(strip=True) if title_elem else cols[2].get_text(strip=True)
+                title = re.sub(r'\s+', ' ', title).strip()
+                year = cols[4].get_text(strip=True)
+                lang = cols[6].get_text(strip=True) or "Unknown"
+                size = cols[7].get_text(strip=True)
+
+                mirror_links = []
+                for m_col in cols[9:11]:
+                    for a in m_col.find_all("a", href=True):
+                        mirror_links.append(a["href"])
+
+                md5 = None
+                for m in mirror_links:
+                    match = re.search(r'([a-fA-F0-9]{32})', m)
+                    if match:
+                        md5 = match.group(1).lower()
+                        break
+
+                results.append({
+                    "title": title,
+                    "author": author,
+                    "year": year,
+                    "lang": lang,
+                    "size": size,
+                    "md5": md5,
+                    "mirrors": mirror_links,
+                    "base": base,
+                    "source": "libgen"
+                })
+            if results:
+                break
+        except Exception:
+            continue
+    return results[:max_results]
+
+def search_libgen(query: str, max_results: int = 35) -> List[Dict]:
+    """Searches Libgen across general, fiction, and .is/.rs clusters concurrently."""
     base_url = "https://libgen.li/index.php"
     results = []
     seen = set()
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = [pool.submit(fetch_libgen_page, base_url, query, p) for p in [1, 2, 3]]
-        for f in futures:
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_gen1 = pool.submit(fetch_libgen_page, base_url, query, 1, None)
+        f_gen2 = pool.submit(fetch_libgen_page, base_url, query, 2, None)
+        f_fic = pool.submit(fetch_libgen_page, base_url, query, 1, "f")
+        f_is = pool.submit(fetch_libgen_is_page, query, 25)
+
+        for f in [f_gen1, f_gen2, f_fic, f_is]:
             try:
                 page_books = f.result()
                 for b in page_books:
-                    key = (b["title"].lower()[:30], b["author"].lower()[:20])
+                    key = (b["title"].lower()[:30], b.get("author", "").lower()[:20])
                     if key not in seen:
                         seen.add(key)
                         results.append(b)
             except Exception:
                 pass
 
-    # If first mirror yields very few, try backup mirror with limit 2 pages
     if len(results) < 5:
         backup_url = "https://libgen.vg/index.php"
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(fetch_libgen_page, backup_url, query, p) for p in [1, 2]]
+            futures = [pool.submit(fetch_libgen_page, backup_url, query, p, None) for p in [1, 2]]
             for f in futures:
                 try:
                     page_books = f.result()
                     for b in page_books:
-                        key = (b["title"].lower()[:30], b["author"].lower()[:20])
+                        key = (b["title"].lower()[:30], b.get("author", "").lower()[:20])
                         if key not in seen:
                             seen.add(key)
                             results.append(b)
@@ -432,90 +514,247 @@ def search_manybooks(query: str, max_results: int = 8) -> List[Dict]:
         logger.warning(f"ManyBooks search error: {e}")
     return results
 
-def search_annas_archive(query: str, max_results: int = 10) -> List[Dict]:
-    """Searches Anna's Archive for EPUB books (best effort, may be throttled by Cloudflare)."""
-    url = f"https://annas-archive.org/search?q={requests.utils.quote(query)}&ext=epub"
+def search_annas_archive(query: str, max_results: int = 15) -> List[Dict]:
+    """Searches Anna's Archive for EPUB books across active mirrors with fast MD5 extraction."""
+    mirrors = ["https://annas-archive.org", "https://annas-archive.se", "https://annas-archive.li"]
     results = []
-    try:
-        r = requests.get(url, headers={**HEADERS, "Accept-Language": "es-ES,es;q=0.9"}, timeout=8)
-        if r.status_code != 200:
-            return []
-        soup = BeautifulSoup(r.text, "html.parser")
-        cards = soup.select("a[href*='/md5/']")[:max_results]
-        for card in cards:
-            texts = [t.strip() for t in card.stripped_strings if t.strip()]
-            if not texts:
+    seen_md5s = set()
+
+    for base in mirrors:
+        try:
+            url = f"{base}/search?q={requests.utils.quote(query)}&ext=epub"
+            r = requests.get(url, headers={**HEADERS, "Accept-Language": "es-ES,es;q=0.9"}, timeout=6)
+            if r.status_code != 200:
                 continue
-            title = texts[0][:80]
-            author = texts[1][:50] if len(texts) > 1 else "Autor desconocido"
-            md5_match = re.search(r"/md5/([a-f0-9]+)", card.get("href", ""))
-            if not md5_match:
-                continue
-            md5 = md5_match.group(1)
-            results.append({
-                "title": title,
-                "author": author,
-                "year": "",
-                "lang": "Unknown",
-                "size": "~1 MB",
-                "direct_url": f"https://annas-archive.org/fast_download/{md5}/0/0",
-                "source": "annas_archive"
-            })
-    except Exception as e:
-        logger.warning(f"Anna's Archive search error: {e}")
+            soup = BeautifulSoup(r.text, "html.parser")
+            cards = soup.select("a[href*='/md5/']")[:max_results * 2]
+            for card in cards:
+                href = card.get("href", "")
+                md5_match = re.search(r"/md5/([a-f0-9]{32})", href, re.IGNORECASE)
+                if not md5_match:
+                    continue
+                md5 = md5_match.group(1).lower()
+                if md5 in seen_md5s:
+                    continue
+                seen_md5s.add(md5)
+
+                texts = [t.strip() for t in card.stripped_strings if t.strip()]
+                if not texts:
+                    continue
+                title = texts[0][:80]
+                author = texts[1][:50] if len(texts) > 1 else "Autor desconocido"
+
+                full_card_text = " ".join(texts)
+                lang = "Unknown"
+                if any(w in full_card_text.lower() for w in ["spanish", "español", "spa"]):
+                    lang = "Spanish"
+                elif any(w in full_card_text.lower() for w in ["english", "inglés", "eng"]):
+                    lang = "English"
+
+                size_match = re.search(r'(\d+(?:\.\d+)?\s*(?:MB|KB|kB|mb|kb))', full_card_text)
+                size = size_match.group(1) if size_match else "~1 MB"
+
+                mirror_links = [
+                    f"https://library.lol/main/{md5}",
+                    f"https://libgen.li/ads.php?md5={md5}",
+                    f"https://libgen.is/get.php?md5={md5}",
+                    f"{base}/md5/{md5}"
+                ]
+
+                results.append({
+                    "title": title,
+                    "author": author,
+                    "year": "",
+                    "lang": lang,
+                    "size": size,
+                    "md5": md5,
+                    "mirrors": mirror_links,
+                    "direct_url": f"https://library.lol/main/{md5}",
+                    "source": "annas_archive"
+                })
+                if len(results) >= max_results:
+                    break
+            if results:
+                break
+        except Exception as e:
+            logger.warning(f"Anna's Archive ({base}) search error: {e}")
+            continue
+
     return results
 
 def search_zlib(query: str, max_results: int = 10) -> List[Dict]:
-    """Searches Z-Library via z-lib.fm for EPUB books (best effort, may be throttled)."""
-    base = "https://z-lib.fm"
+    """Searches Z-Library across active mirrors for EPUB books with fast non-blocking parsing."""
+    mirrors = ["https://z-lib.fm", "https://z-lib.id", "https://z-lib.gd"]
     results = []
-    try:
-        r = requests.get(f"{base}/s/{requests.utils.quote(query)}?e=1", headers=HEADERS, timeout=8)
-        if r.status_code != 200:
-            return []
-        soup = BeautifulSoup(r.text, "html.parser")
-        cards = soup.select(".book-item, .bookRow, .resItemBox")[:max_results]
-        for card in cards:
-            title_tag = card.select_one("h3, .book__title, .itemCover")
-            if not title_tag:
+
+    for base in mirrors:
+        try:
+            url = f"{base}/s/{requests.utils.quote(query)}?e=1"
+            r = requests.get(url, headers=HEADERS, timeout=6)
+            if r.status_code != 200:
                 continue
-            title = title_tag.get_text(strip=True)[:80]
-            author_tag = card.select_one(".book__author, .authors")
-            author = author_tag.get_text(strip=True)[:50] if author_tag else "Autor desconocido"
-            link_tag = card.select_one("a[href]")
-            if not link_tag:
-                continue
-            book_href = link_tag.get("href", "")
-            if not book_href.startswith("http"):
-                book_href = base + book_href
-            detail_r = requests.get(book_href, headers=HEADERS, timeout=6)
-            if detail_r.status_code == 200:
-                detail_soup = BeautifulSoup(detail_r.text, "html.parser")
-                dl_btn = detail_soup.find("a", href=lambda h: h and ("/dl/" in h or "/downloads/" in h))
-                if dl_btn:
-                    dl_href = dl_btn.get("href", "")
-                    if not dl_href.startswith("http"):
-                        dl_href = base + dl_href
-                    results.append({
-                        "title": title,
-                        "author": author,
-                        "year": "",
-                        "lang": "Unknown",
-                        "size": "~1 MB",
-                        "direct_url": dl_href,
-                        "source": "zlibrary"
-                    })
-    except Exception as e:
-        logger.warning(f"Z-Library search error: {e}")
+            soup = BeautifulSoup(r.text, "html.parser")
+            cards = soup.select(".book-item, .bookRow, .resItemBox, tr.bookRow")[:max_results]
+            for card in cards:
+                title_tag = card.select_one("h3, .book__title, .itemCover, a[href*='/book/']")
+                if not title_tag:
+                    continue
+                title = title_tag.get_text(strip=True)[:80]
+                if not title:
+                    continue
+                author_tag = card.select_one(".book__author, .authors")
+                author = author_tag.get_text(strip=True)[:50] if author_tag else "Autor desconocido"
+
+                link_tag = card.select_one("a[href*='/book/']") or card.select_one("a[href]")
+                book_href = link_tag.get("href", "") if link_tag else ""
+                detail_url = urljoin(base, book_href) if book_href else ""
+
+                card_text = card.get_text()
+                lang = "Unknown"
+                if any(w in card_text.lower() for w in ["spanish", "español", "spa"]):
+                    lang = "Spanish"
+                elif any(w in card_text.lower() for w in ["english", "inglés", "eng"]):
+                    lang = "English"
+
+                size_match = re.search(r'(\d+(?:\.\d+)?\s*(?:MB|KB|kB|mb|kb))', card_text)
+                size = size_match.group(1) if size_match else "~1 MB"
+
+                md5 = None
+                md5_match = re.search(r'([a-f0-9]{32})', book_href)
+                if md5_match:
+                    md5 = md5_match.group(1).lower()
+
+                results.append({
+                    "title": title,
+                    "author": author,
+                    "year": "",
+                    "lang": lang,
+                    "size": size,
+                    "md5": md5,
+                    "detail_url": detail_url,
+                    "source": "zlibrary"
+                })
+            if results:
+                break
+        except Exception as e:
+            logger.warning(f"Z-Library ({base}) search error: {e}")
+            continue
+
     return results
+
+def strip_accents(s: str) -> str:
+    """Normalizes string by removing accents and diacritics."""
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn').lower()
+
+def normalize_for_matching(s: str) -> str:
+    """Cleans punctuation and extra whitespace for fuzzy and token matching."""
+    s = strip_accents(s or "")
+    s = re.sub(r'[^a-z0-9\s]', ' ', s)
+    return re.sub(r'\s+', ' ', s).strip()
+
+JUNK_KEYWORDS = (
+    'resumen', 'summary', 'analisis', 'analysis', 'guia de lectura', 'study guide',
+    'bitesize', 'sparknotes', 'critica', 'comentario sobre', 'biografia no autorizada',
+    'cliffsnotes', 'workbook', 'sampler', 'fragmento', 'preview', 'extracto',
+    'apuntes', 'ensayo critico', 'cheat sheet', 'notes on', 'spark notes'
+)
+
+def calculate_relevance_score(book: Dict, query: str, target_lang: Optional[str] = "Spanish") -> float:
+    """
+    Computes an intelligent relevance score for a book candidate against the search query.
+    Promotes exact and high-similarity title and author matches.
+    Severely penalizes summaries, study guides, and derivative works.
+    """
+    title = book.get('title', '')
+    author = book.get('author', '')
+    lang = book.get('lang', '')
+
+    norm_q = normalize_for_matching(query)
+    norm_t = normalize_for_matching(title)
+    norm_a = normalize_for_matching(author)
+
+    if not norm_q or not norm_t:
+        return 0.0
+
+    q_words = [w for w in norm_q.split() if len(w) > 1]
+    if not q_words:
+        q_words = norm_q.split()
+
+    score = 0.0
+
+    t_words = set(norm_t.split())
+    a_words = set(norm_a.split())
+    all_doc_words = t_words | a_words
+
+    # Identify query words that belong to author vs title
+    author_matches = [w for w in q_words if any(w in aw for aw in a_words)]
+    title_target_words = [w for w in q_words if w not in author_matches] or q_words
+    norm_title_target = ' '.join(title_target_words)
+
+    # 1. Exact or prefix match against full query or title-target
+    if norm_t == norm_q or norm_t == norm_title_target:
+        score += 1500
+    elif norm_t.startswith(norm_q) or norm_t.startswith(norm_title_target):
+        score += 800
+    elif norm_q in norm_t or norm_title_target in norm_t:
+        score += 600
+
+    # 2. Token overlap across title and author
+    matched_words = [w for w in q_words if w in all_doc_words]
+    if q_words:
+        token_ratio = len(matched_words) / len(q_words)
+        score += token_ratio * 500
+
+    # Bonus if query contained both title and author tokens and both matched
+    if author_matches and any(w in t_words for w in title_target_words):
+        score += 500
+
+    # 3. Fuzzy similarity of title against title target
+    sim = max(
+        difflib.SequenceMatcher(None, norm_q, norm_t).ratio(),
+        difflib.SequenceMatcher(None, norm_title_target, norm_t).ratio()
+    )
+    score += sim * 300
+
+    # 4. Length penalty (prevent bloated academic titles or theses from outranking short book titles)
+    matched_in_title = [w for w in q_words if w in t_words]
+    title_match_len = sum(len(w) for w in matched_in_title)
+    len_diff = max(0, len(norm_t) - title_match_len)
+    if len_diff > 20 and not any(norm_t.startswith(w) for w in matched_in_title):
+        score -= min(300, len_diff * 4)
+
+    # 5. Derivative work / Junk penalty (summaries, study guides, reviews)
+    has_junk = any(k in norm_t for k in JUNK_KEYWORDS)
+    if has_junk and not any(k in norm_q for k in JUNK_KEYWORDS):
+        score -= 900
+
+    # 6. Language bonus / penalty
+    is_spanish = (
+        any(l in lang.lower() for l in ['spanish', 'spa', 'es']) or
+        bool(re.search(r'[áéíóúñ¿¡]', title.lower()))
+    )
+    if target_lang and target_lang.lower() in ['spanish', 'es']:
+        if is_spanish:
+            score += 300
+        elif any(l in lang.lower() for l in ['english', 'inglés', 'en']):
+            score -= 250
+
+    # 7. Source quality bonus
+    src = book.get('source', '')
+    if src in ['libgen', 'libgen_is', 'zlibrary', 'annas_archive']:
+        score += 60
+    elif src == 'standard_ebooks':
+        score += 50
+
+    return score
 
 def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] = "Spanish") -> Tuple[List[Dict], List[Dict]]:
     """
-    Multi-source engine: Libgen, Archive.org, OpenLibrary, Gutenberg,
-    Standard Ebooks, ManyBooks, Anna's Archive, Z-Library.
+    Multi-source engine: Libgen (general, fiction, .is, .rs), Archive.org, OpenLibrary,
+    Gutenberg, Standard Ebooks, ManyBooks, Anna's Archive, Z-Library.
+    Applies intelligent relevance ranking and de-duplication with mirror merging.
     """
-    all_books = []
-    seen_titles = set()
+    raw_books = []
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         f_libgen = executor.submit(search_libgen, query, 35)
@@ -524,32 +763,81 @@ def search_epubs(query: str, max_results: int = 40, target_lang: Optional[str] =
         f_gutenberg = executor.submit(search_gutenberg, query, 5)
         f_standard = executor.submit(search_standard_ebooks, query, 5)
         f_manybooks = executor.submit(search_manybooks, query, 8)
-        f_annas = executor.submit(search_annas_archive, query, 10)
+        f_annas = executor.submit(search_annas_archive, query, 15)
         f_zlib = executor.submit(search_zlib, query, 10)
 
         for future in [f_libgen, f_archive, f_openlibrary, f_gutenberg,
                        f_standard, f_manybooks, f_annas, f_zlib]:
             try:
                 res = future.result()
-                for b in res:
-                    clean_t = re.sub(r'[^a-zA-Z0-9]', '', b.get('title', '').lower()[:45])
-                    clean_a = re.sub(r'[^a-zA-Z0-9]', '', b.get('author', '').lower()[:20])
-                    norm = f"{clean_t}_{clean_a}" if clean_a else clean_t
-                    if norm and norm not in seen_titles:
-                        seen_titles.add(norm)
-                        all_books.append(b)
+                if res:
+                    raw_books.extend(res)
             except Exception:
                 pass
+
+    # Deduplicate and merge mirrors/sources
+    books_by_key = {}
+    for b in raw_books:
+        clean_t = normalize_for_matching(b.get('title', ''))[:40]
+        clean_a = normalize_for_matching(b.get('author', ''))[:20]
+        key = f"{clean_t}_{clean_a}" if clean_a else clean_t
+        if not key:
+            continue
+
+        if key not in books_by_key:
+            books_by_key[key] = dict(b)
+        else:
+            existing = books_by_key[key]
+            # Merge mirrors
+            existing_mirrors = existing.get("mirrors", [])
+            new_mirrors = b.get("mirrors", [])
+            merged = list(dict.fromkeys(existing_mirrors + new_mirrors))
+            existing["mirrors"] = merged
+
+            # Prefer existing direct_url, fallback to new
+            if not existing.get("direct_url") and b.get("direct_url"):
+                existing["direct_url"] = b["direct_url"]
+            if not existing.get("md5") and b.get("md5"):
+                existing["md5"] = b["md5"]
+            if not existing.get("detail_url") and b.get("detail_url"):
+                existing["detail_url"] = b["detail_url"]
+            if existing.get("lang", "Unknown") == "Unknown" and b.get("lang", "Unknown") != "Unknown":
+                existing["lang"] = b["lang"]
+
+    # Compute relevance score for each candidate
+    scored_books = []
+    for b in books_by_key.values():
+        score = calculate_relevance_score(b, query, target_lang)
+        # Filter out extreme junk (study guides, random noise with negative score)
+        if score < -300:
+            continue
+        b["_score"] = score
+        scored_books.append(b)
 
     matching_books = []
     other_books = []
 
-    for book in all_books:
+    for book in scored_books:
         lang = book.get("lang", "Unknown")
-        if target_lang is None or target_lang.lower() in lang.lower():
+        is_spanish = (
+            any(l in lang.lower() for l in ['spanish', 'spa', 'es']) or
+            bool(re.search(r'[áéíóúñ¿¡]', book.get('title', '').lower()))
+        )
+        if target_lang is None:
+            matching_books.append(book)
+        elif target_lang.lower() in ["spanish", "es"]:
+            if is_spanish or (lang == "Unknown" and book.get("_score", 0) > 400):
+                matching_books.append(book)
+            else:
+                other_books.append(book)
+        elif target_lang.lower() in lang.lower():
             matching_books.append(book)
         else:
             other_books.append(book)
+
+    # Sort strictly by relevance score descending
+    matching_books.sort(key=lambda b: b.get("_score", 0), reverse=True)
+    other_books.sort(key=lambda b: b.get("_score", 0), reverse=True)
 
     return matching_books[:max_results], other_books[:max_results]
 
@@ -621,60 +909,85 @@ def _resolve_archive_epub_url(ident: str) -> Optional[str]:
         return None
 
 def _libgen_download_candidates(book: Dict) -> List[str]:
-    """Collects candidate direct-download URLs from every Libgen mirror page of a book."""
+    """Collects candidate direct-download URLs from Libgen / Anna's / Z-Library mirrors and IPFS."""
     base = book.get("base") or "https://libgen.li"
     candidates: List[str] = []
 
-    # Extract md5 from any mirror link to try library.lol (more reliable mirror)
-    md5 = None
-    for mirror in book.get("mirrors", []):
-        m = re.search(r'md5=([a-fA-F0-9]{32})', mirror, re.IGNORECASE)
-        if m:
-            md5 = m.group(1).lower()
-            break
+    # 1. Direct MD5 from book or extracted from mirrors
+    md5 = book.get("md5")
+    if not md5:
+        for mirror in book.get("mirrors", []):
+            m = re.search(r'md5=([a-fA-F0-9]{32})', mirror, re.IGNORECASE)
+            if not m:
+                m = re.search(r'([a-fA-F0-9]{32})', mirror)
+            if m:
+                md5 = m.group(1).lower()
+                break
 
     if md5:
         try:
-            lol_resp = requests.get(f"https://library.lol/main/{md5}", headers=HEADERS, timeout=10)
+            lol_resp = requests.get(f"https://library.lol/main/{md5}", headers=HEADERS, timeout=8)
             if lol_resp.status_code == 200:
                 lol_soup = BeautifulSoup(lol_resp.text, "html.parser")
                 dl_link = lol_soup.select_one("#download a") or lol_soup.find("a", href=lambda h: h and "get.php" in str(h))
                 if dl_link and dl_link.get("href"):
-                    lol_url = urljoin("https://library.lol/", dl_link["href"])
-                    if lol_url not in candidates:
-                        candidates.append(lol_url)
+                    candidates.append(urljoin("https://library.lol/", dl_link["href"]))
+                for a in lol_soup.select("#download li a, #info a"):
+                    h = a.get("href", "")
+                    if h and ("ipfs" in h or "cloudflare" in h or "pinata" in h):
+                        candidates.append(h)
         except Exception as e:
-            logger.warning(f"library.lol fallback failed for md5={md5}: {e}")
+            logger.warning(f"library.lol lookup failed for md5={md5}: {e}")
 
+        # Direct Libgen & IPFS mirrors for MD5
+        candidates.append(f"https://libgen.is/get.php?md5={md5}")
+        candidates.append(f"https://libgen.li/get.php?md5={md5}")
+        candidates.append(f"https://libgen.rs/get.php?md5={md5}")
+        candidates.append(f"https://cloudflare-ipfs.com/ipfs/{md5}")
+
+    # 2. Existing mirror pages
     for mirror in book.get("mirrors", []):
-        mirror_url = urljoin(base + "/", mirror)
+        if mirror.startswith("http") and mirror.endswith(".epub"):
+            if mirror not in candidates:
+                candidates.append(mirror)
+            continue
+        mirror_url = urljoin(base + "/", mirror) if not mirror.startswith("http") else mirror
         try:
-            m_resp = requests.get(mirror_url, headers=HEADERS, timeout=10)
+            m_resp = requests.get(mirror_url, headers=HEADERS, timeout=8)
             if m_resp.status_code != 200:
                 continue
             m_soup = BeautifulSoup(m_resp.text, "html.parser")
             get_btn = m_soup.find("a", string=lambda t: t and "get" in t.lower())
             if not get_btn:
-                get_btn = m_soup.find("a", href=lambda h: h and "get.php" in h)
+                get_btn = m_soup.find("a", href=lambda h: h and ("get.php" in h or "/dl/" in h))
             if get_btn and get_btn.get("href"):
                 url = urljoin(mirror_url, get_btn["href"])
                 if url not in candidates:
                     candidates.append(url)
         except Exception as e:
-            logger.warning(f"Libgen mirror {mirror_url} failed: {e}")
-    return candidates
+            logger.warning(f"Mirror {mirror_url} failed: {e}")
+
+    # Deduplicate while preserving order
+    seen_cand = set()
+    ordered_candidates = []
+    for c in candidates:
+        if c and c not in seen_cand:
+            seen_cand.add(c)
+            ordered_candidates.append(c)
+
+    return ordered_candidates
 
 def download_epub(book: Dict, output_dir: Optional[str] = None, progress_cb=None) -> Optional[str]:
     """
-    Downloads an EPUB from a direct URL or Libgen mirrors and saves it locally with a
-    collision-resistant temporary filename. Returns the file path, or None on failure.
+    Downloads an EPUB from direct URLs, Z-Library detail links, or Libgen/Anna's/IPFS mirrors.
+    Saves locally with a collision-resistant temporary filename. Returns path or None.
     """
     target_dir = output_dir or DOWNLOADS_DIR
     os.makedirs(target_dir, exist_ok=True)
     safe_title = clean_filename(book.get('title', 'libro')[:45]) or "libro"
     filepath = os.path.join(target_dir, f"{safe_title}_{uuid.uuid4().hex[:6]}.epub")
 
-    # 1. Direct download (Archive.org / OpenLibrary / Gutenberg)
+    # 1. Direct download (Archive.org / OpenLibrary / Gutenberg / Standard Ebooks)
     direct = book.get("direct_url")
     if direct:
         logger.info(f"Downloading from direct source: {direct}")
@@ -690,9 +1003,24 @@ def download_epub(book: Dict, output_dir: Optional[str] = None, progress_cb=None
             else:
                 logger.warning(f"Archive.org item {m.group(1)} has no downloadable EPUB (may be lending-only).")
 
-    # 2. Libgen mirrors: try every candidate link until one yields a valid EPUB
+    # 2. Z-Library detail URL on-demand resolution
+    if book.get("source") == "zlibrary" and book.get("detail_url"):
+        try:
+            logger.info(f"Resolving Z-Library detail page: {book['detail_url']}")
+            r = requests.get(book["detail_url"], headers=HEADERS, timeout=8)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                dl_btn = soup.find("a", href=lambda h: h and ("/dl/" in h or "/downloads/" in h))
+                if dl_btn and dl_btn.get("href"):
+                    dl_href = urljoin(book["detail_url"], dl_btn["href"])
+                    if _stream_to_file(dl_href, filepath, timeout=30, progress_cb=progress_cb):
+                        return filepath
+        except Exception as e:
+            logger.warning(f"Z-Library detail fetch failed: {e}")
+
+    # 3. Libgen / Anna's / MD5 / IPFS candidates
     for url in _libgen_download_candidates(book):
-        logger.info(f"Downloading from Libgen: {url}")
+        logger.info(f"Downloading from mirror candidate: {url}")
         if _stream_to_file(url, filepath, timeout=30, progress_cb=progress_cb):
             return filepath
 
